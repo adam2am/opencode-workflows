@@ -1,0 +1,42 @@
+{
+  "name": "opencode-workflows",
+  "version": "1.0.0",
+  "description": "Inline workflow mentions for OpenCode - use //workflow-name anywhere in your prompts",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "author": "adam2am <adam2am@outlook.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/adam2am/opencode-workflows"
+  },
+  "keywords": [
+    "opencode",
+    "plugin",
+    "workflows",
+    "templates",
+    "prompts",
+    "ai",
+    "claude",
+    "automation"
+  ],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "bun build src/index.ts --outdir=dist --target=node --format=esm && bun run build:types",
+    "build:types": "tsc --emitDeclarationOnly --declaration --outDir dist",
+    "prepublishOnly": "bun run build"
+  },
+  "dependencies": {
+    "@opencode-ai/plugin": "latest"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^25.0.0",
+    "typescript": "^5.0.0"
+  }
+}
