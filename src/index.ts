@@ -1,9 +1,10 @@
-import type { Plugin, PluginInput, Hooks } from '@opencode-ai/plugin';
+import type { Plugin, PluginInput } from '@opencode-ai/plugin';
 import type { Part, UserMessage } from '@opencode-ai/sdk';
 import { tool } from '@opencode-ai/plugin';
 import { existsSync, readdirSync, readFileSync, writeFileSync, unlinkSync, mkdirSync, renameSync } from 'fs';
 import { join, basename } from 'path';
 import { homedir } from 'os';
+import { findBestMatch, findAllMatches, findWorkflowByName, detectWorkflowMentions, parseFrontmatter, formatSuggestion } from './core';
 
 interface WorkflowInfo {
   name: string;
@@ -15,46 +16,6 @@ interface WorkflowInfo {
   content: string;
   source: 'project' | 'global';
   path: string;
-}
-
-function parseArrayField(yaml: string, fieldName: string): string[] {
-  const regex = new RegExp(`^${fieldName}:\\s*(?:\\[(.*)\\]|(.*))`, 'm');
-  const match = yaml.match(regex);
-  if (!match) return [];
-  const raw = match[1] || match[2];
-  if (!raw) return [];
-  return raw.split(',').map(a => a.trim().replace(/['"]/g, '')).filter(a => a);
-}
-
-function parseFrontmatter(fileContent: string): { aliases: string[], tags: string[], agents: string[], description: string, autoworkflow: boolean, body: string } {
-  const frontmatterRegex = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/;
-  const match = fileContent.match(frontmatterRegex);
-
-  if (!match) {
-    return { aliases: [], tags: [], agents: [], description: '', autoworkflow: false, body: fileContent };
-  }
-
-  const yaml = match[1];
-  const body = fileContent.slice(match[0].length);
-
-  const aliases = [
-    ...parseArrayField(yaml, 'aliases'),
-    ...parseArrayField(yaml, 'shortcuts')
-  ];
-  const tags = parseArrayField(yaml, 'tags');
-  const agents = parseArrayField(yaml, 'agents');
-
-  const descMatch = yaml.match(/^description:\s*(.*)$/m);
-  const description = descMatch ? descMatch[1].trim().replace(/^['"]|['"]$/g, '') : '';
-
-  const autoMatch = yaml.match(/^autoworkflow:\s*(.*)$/m);
-  let autoworkflow = false;
-  if (autoMatch) {
-    const val = autoMatch[1].trim().toLowerCase();
-    autoworkflow = val === 'true' || val === 'yes';
-  }
-
-  return { aliases, tags, agents, description, autoworkflow, body };
 }
 
 function getWorkflowDirs(projectDir: string): { path: string; source: 'project' | 'global' }[] {
@@ -122,29 +83,13 @@ function loadWorkflows(projectDir: string): Map<string, WorkflowInfo> {
   return workflows;
 }
 
-const WORKFLOW_MENTION_PATTERN = /(?<![:\w/])\/\/([a-zA-Z0-9][a-zA-Z0-9_-]*)/g;
+const sessionWorkflows = new Map<string, Map<string, { id: string; messageID: string }>>();
 
-function detectWorkflowMentions(text: string): string[] {
-  const matches: string[] = [];
-  let match: RegExpExecArray | null;
-  
-  WORKFLOW_MENTION_PATTERN.lastIndex = 0;
-
-  while ((match = WORKFLOW_MENTION_PATTERN.exec(text)) !== null) {
-    matches.push(match[1]);
+function shortId(messageID: string): string {
+  if (messageID && messageID.length >= 4) {
+    return messageID.slice(-4);
   }
-  
-  return [...new Set(matches)];
-}
-
-function findBestMatch(typo: string, candidates: string[]): string | null {
-  const prefixMatch = candidates.find(c => c.startsWith(typo));
-  if (prefixMatch) return prefixMatch;
-
-  const partialMatch = candidates.find(c => c.includes(typo));
-  if (partialMatch) return partialMatch;
-
-  return null;
+  return Math.random().toString(36).slice(2, 6);
 }
 
 function expandWorkflowMentions(
@@ -157,19 +102,19 @@ function expandWorkflowMentions(
   const suggestions = new Map<string, string>();
   let expanded = text;
 
-  for (const mention of mentions) {
-    const workflow = workflows.get(mention);
+  for (const { name, force } of mentions) {
+    const workflow = workflows.get(name);
     if (workflow) {
-      found.push(mention);
+      found.push(name);
       expanded = expanded.replace(
-        new RegExp(`(?<![:\\w/])//${mention}(?![\\w-])`, 'g'),
-        `\n\n<workflow name="${mention}" source="${workflow.source}">\n${workflow.content}\n</workflow>\n\n`
+        new RegExp(`(?<![:\\\\w/])//${name}!?(?![\\\\w-])`, 'g'),
+        `\n\n<workflow name="${name}" source="${workflow.source}">\n${workflow.content}\n</workflow>\n\n`
       );
     } else {
-      notFound.push(mention);
-      const match = findBestMatch(mention, [...workflows.keys()]);
+      notFound.push(name);
+      const match = findBestMatch(name, [...workflows.keys()]);
       if (match) {
-        suggestions.set(mention, match);
+        suggestions.set(name, match);
       }
     }
   }
@@ -250,6 +195,13 @@ export const WorkflowsPlugin: Plugin = async (ctx: PluginInput) => {
     ) => {
       try {
         workflows = loadWorkflows(directory);
+        const sessionID = _input.sessionID;
+        const messageID = _input.messageID || '';
+
+        if (!sessionWorkflows.has(sessionID)) {
+          sessionWorkflows.set(sessionID, new Map());
+        }
+        const workflowRefs = sessionWorkflows.get(sessionID)!;
 
         for (const part of output.parts) {
           if (part.type === "text" && "text" in part) {
@@ -278,28 +230,78 @@ export const WorkflowsPlugin: Plugin = async (ctx: PluginInput) => {
               continue;
             }
 
-            const { expanded, found, notFound, suggestions } = expandWorkflowMentions(
-              textPart.text,
-              workflows
-            );
+            const found: string[] = [];
+            const reused: string[] = [];
+            const notFound: string[] = [];
+            const suggestions = new Map<string, string[]>();
+            let expanded = textPart.text;
 
-            if (found.length === 0 && notFound.length === 0) continue;
+            for (const { name, force } of mentions) {
+              const canonicalName = findWorkflowByName(name, [...workflows.keys()]);
+              const workflow = canonicalName ? workflows.get(canonicalName) : null;
+              
+              if (!workflow || !canonicalName) {
+                notFound.push(name);
+                const matches = findAllMatches(name, [...workflows.keys()], 3);
+                if (matches.length > 0) suggestions.set(name, matches);
+                continue;
+              }
 
-            if (found.length > 0) {
-              textPart.text = expanded;
-              showToast(ctx, `Expanded: ${found.join(', ')}`, "success", "Workflows");
+              const existingRef = workflowRefs.get(canonicalName);
+              const shouldFullInject = force || !existingRef;
+
+              if (shouldFullInject) {
+                const id = shortId(messageID);
+                workflowRefs.set(canonicalName, { id, messageID });
+                found.push(canonicalName);
+                expanded = expanded.replace(
+                  new RegExp(`(?<![:\\\\w/])//${name}!?(?![\\\\w-])`, 'g'),
+                  `\n\n<workflow name="${canonicalName}" id="${canonicalName}-${id}" source="${workflow.source}">\n${workflow.content}\n</workflow>\n\n`
+                );
+              } else {
+                reused.push(canonicalName);
+                expanded = expanded.replace(
+                  new RegExp(`(?<![:\\\\w/])//${name}(?![\\\\w-])`, 'g'),
+                  `[workflow:${canonicalName}-${existingRef.id}]`
+                );
+              }
             }
 
+            if (found.length === 0 && reused.length === 0 && notFound.length === 0) continue;
+
+            textPart.text = expanded;
+
+            const toastParts: string[] = [];
+            let toastVariant: "success" | "info" | "warning" = "success";
+
+            if (found.length > 0) {
+              toastParts.push(`✓ Expanded: ${found.join(', ')}`);
+            }
+            if (reused.length > 0) {
+              toastParts.push(`↺ Referenced: ${reused.join(', ')}`);
+              if (toastVariant === "success" && found.length === 0) toastVariant = "info";
+            }
             if (notFound.length > 0) {
+              toastVariant = "warning";
               const suggestionMsg = [...suggestions.entries()]
-                .map(([typo, suggestion]) => `${typo} → ${suggestion}`)
+                .map(([typo, matches]) => {
+                  const formatted = matches.map(match => {
+                    const wf = workflows.get(match);
+                    return wf ? formatSuggestion(wf.name, wf.aliases) : match;
+                  }).join(' | ');
+                  return `${typo} → ${formatted}`;
+                })
                 .join(', ');
               
               if (suggestionMsg) {
-                showToast(ctx, `Did you mean: ${suggestionMsg}?`, "warning", "Unknown Workflow");
+                toastParts.push(`? Did you mean: ${suggestionMsg}`);
               } else {
-                showToast(ctx, `Not found: ${notFound.join(', ')}`, "warning", "Unknown Workflow");
+                toastParts.push(`✗ Not found: ${notFound.join(', ')}`);
               }
+            }
+
+            if (toastParts.length > 0) {
+              showToast(ctx, toastParts.join('\n'), toastVariant, "Workflows");
             }
           }
         }
@@ -312,6 +314,11 @@ export const WorkflowsPlugin: Plugin = async (ctx: PluginInput) => {
       // @ts-ignore - event.type exists at runtime
       if (event.type === 'session.created') {
         workflows = loadWorkflows(directory);
+      }
+      // @ts-ignore
+      if (event.type === 'session.deleted' && event.properties?.sessionID) {
+        // @ts-ignore
+        sessionWorkflows.delete(event.properties.sessionID);
       }
     },
 

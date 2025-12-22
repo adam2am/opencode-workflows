@@ -1,5 +1,25 @@
 # Patchlog
 
+## [1.2.0] - 2025-01-13
+
+### Added
+- Canonical workflow lookup: `//5approaches` now auto-executes `5-approaches`
+- Case-insensitive matching: `//CommitReview` expands `commit_review`
+- Delimiter-agnostic matching: `//commitreview` expands `commit_review`
+- Force re-injection syntax: `//workflow!` re-expands even if already used in session
+- Session-aware workflow tracking: repeated mentions show compact `[workflow:name-id]` reference
+- 61 unit tests for core matching and parsing functions
+
+### Changed
+- Extract pure functions to `core.ts` for better testability
+- Consolidate multiple toast notifications into single multi-line message
+- Suggestions now show multiple matches with aliases (e.g., `cr → commit_review (cr) | create`)
+
+### Fixed
+- Multiple workflows expanding only showed one in toast notification
+- Toast race condition causing notifications to overwrite each other
+
+
 ## [1.1.2] - 2025-12-22
 
 ### Changed
@@ -35,6 +55,7 @@
 
 ### Fixed
 - Console.log pollution replaced with clean TUI toasts
+
 
 ## [1.0.0] - 2025-12-21
 

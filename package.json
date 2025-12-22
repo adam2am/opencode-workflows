@@ -30,7 +30,8 @@
     "build": "bun build src/index.ts --outdir=dist --target=node --format=esm && bun run build:types",
     "build:types": "tsc --emitDeclarationOnly --declaration --outDir dist",
     "prepublishOnly": "bun run build",
-    "b": "bun run build"
+    "b": "bun run build",
+    "test": "bun test"
   },
   "dependencies": {
     "@opencode-ai/plugin": "latest"
