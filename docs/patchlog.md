@@ -1,5 +1,22 @@
 # Patchlog
 
+## [1.2.3] - 2025-12-22
+
+### Added
+- Same-message workflow deduplication: first `//foo` expands, subsequent `//foo` becomes `[use_workflow:foo-id]`
+- Configuration file `~/.config/opencode/workflows.json` with `deduplicateSameMessage` option
+- Orphan reference recovery: AI can retrieve missing workflow content via `get_workflow` tool
+- 23 new tests (109 total)
+
+### Changed
+- Reference tag renamed from `[workflow:...]` to `[use_workflow:...]` for clarity
+- System prompt now instructs AI to use already-expanded workflow content directly
+
+### Fixed
+- Workflow refs cleaned up when message is deleted/canceled (no more stale references)
+- Removed `@ts-ignore` anti-patterns, added proper `PluginEvent` typing
+
+
 ## [1.2.2] - 2025-12-22
 
 ### Added

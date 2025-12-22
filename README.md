@@ -130,8 +130,23 @@ Now `//cr`, `//review_commit`, and `//commit-review` all trigger the same workfl
 1. **Startup**: Plugin loads all `.md` files from workflow directories and logs count
 2. **Detection**: When you send a message, the plugin scans for `//pattern` mentions
 3. **Expansion**: Valid mentions are replaced with full workflow content in `<workflow>` tags
-4. **Suggestions**: Invalid mentions trigger "Did you mean?" suggestions
-5. **Injection**: Context is appended instructing the AI to apply all workflows
+4. **Deduplication**: Repeated mentions in the same message become `[use_workflow:name-id]` references
+5. **Session Tracking**: Workflows used in previous messages are referenced, not re-expanded
+6. **Suggestions**: Invalid mentions trigger "Did you mean?" suggestions
+
+### Smart Deduplication
+
+When you mention the same workflow multiple times in one message:
+
+```
+Analyze this //linus-torvalds style, then apply //linus-torvalds to refactor
+```
+
+The plugin expands the **first** mention fully and converts subsequent mentions to references:
+- First `//linus-torvalds` → `<workflow name="linus-torvalds">...</workflow>`
+- Second `//linus-torvalds` → `[use_workflow:linus-torvalds-abc1]`
+
+This prevents context bloat while maintaining workflow availability.
 
 ### Pattern Matching
 
@@ -156,6 +171,30 @@ Or for local development:
 ```bash
 cd ~/.config/opencode/plugin/opencode-workflows
 bun install
+```
+
+## Configuration
+
+The plugin creates a configuration file at `~/.config/opencode/workflows.json` on first run:
+
+```json
+{
+  "deduplicateSameMessage": true
+}
+```
+
+### Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `deduplicateSameMessage` | `true` | When enabled, repeated workflow mentions in the same message become references (`[use_workflow:...]`) instead of full expansions. Set to `false` to always expand all mentions. |
+
+**To disable deduplication** (expand all mentions fully):
+
+```json
+{
+  "deduplicateSameMessage": false
+}
 ```
 
 ## License
