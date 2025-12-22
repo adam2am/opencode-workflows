@@ -8,35 +8,53 @@ import { homedir } from 'os';
 interface WorkflowInfo {
   name: string;
   aliases: string[];
+  tags: string[];
+  agents: string[];
+  description: string;
+  autoworkflow: boolean;
   content: string;
   source: 'project' | 'global';
   path: string;
 }
 
-function parseFrontmatter(fileContent: string): { aliases: string[], body: string } {
+function parseArrayField(yaml: string, fieldName: string): string[] {
+  const regex = new RegExp(`^${fieldName}:\\s*(?:\\[(.*)\\]|(.*))`, 'm');
+  const match = yaml.match(regex);
+  if (!match) return [];
+  const raw = match[1] || match[2];
+  if (!raw) return [];
+  return raw.split(',').map(a => a.trim().replace(/['"]/g, '')).filter(a => a);
+}
+
+function parseFrontmatter(fileContent: string): { aliases: string[], tags: string[], agents: string[], description: string, autoworkflow: boolean, body: string } {
   const frontmatterRegex = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/;
   const match = fileContent.match(frontmatterRegex);
 
   if (!match) {
-    return { aliases: [], body: fileContent };
+    return { aliases: [], tags: [], agents: [], description: '', autoworkflow: false, body: fileContent };
   }
 
   const yaml = match[1];
   const body = fileContent.slice(match[0].length);
-  const aliases: string[] = [];
 
-  const aliasMatch = yaml.match(/^(?:aliases|shortcuts):\s*(?:\[(.*?)\]|(.*))/m);
-  if (aliasMatch) {
-    const rawAliases = aliasMatch[1] || aliasMatch[2];
-    if (rawAliases) {
-      rawAliases.split(',').forEach(a => {
-        const clean = a.trim().replace(/['"]/g, '');
-        if (clean) aliases.push(clean);
-      });
-    }
+  const aliases = [
+    ...parseArrayField(yaml, 'aliases'),
+    ...parseArrayField(yaml, 'shortcuts')
+  ];
+  const tags = parseArrayField(yaml, 'tags');
+  const agents = parseArrayField(yaml, 'agents');
+
+  const descMatch = yaml.match(/^description:\s*(.*)$/m);
+  const description = descMatch ? descMatch[1].trim().replace(/^['"]|['"]$/g, '') : '';
+
+  const autoMatch = yaml.match(/^autoworkflow:\s*(.*)$/m);
+  let autoworkflow = false;
+  if (autoMatch) {
+    const val = autoMatch[1].trim().toLowerCase();
+    autoworkflow = val === 'true' || val === 'yes';
   }
 
-  return { aliases, body };
+  return { aliases, tags, agents, description, autoworkflow, body };
 }
 
 function getWorkflowDirs(projectDir: string): { path: string; source: 'project' | 'global' }[] {
@@ -85,9 +103,9 @@ function loadWorkflows(projectDir: string): Map<string, WorkflowInfo> {
         if (!workflows.has(name)) {
           const filePath = join(dir, file);
           const rawContent = readFileSync(filePath, 'utf-8');
-          const { aliases, body } = parseFrontmatter(rawContent);
+          const { aliases, tags, agents, description, autoworkflow, body } = parseFrontmatter(rawContent);
           
-          const info: WorkflowInfo = { name, aliases, content: body, source, path: filePath };
+          const info: WorkflowInfo = { name, aliases, tags, agents, description, autoworkflow, content: body, source, path: filePath };
           workflows.set(name, info);
           
           aliases.forEach(alias => {
@@ -160,23 +178,18 @@ function expandWorkflowMentions(
 }
 
 function buildWorkflowContext(found: string[], notFound: string[], suggestions: Map<string, string>): string {
+  if (found.length === 0 && notFound.length === 0) return '';
+  
   let context = `\n\n<workflows-context>\n`;
-  
   if (found.length > 0) {
-    context += `Expanded ${found.length} workflow(s): ${found.join(', ')}\n`;
+    context += `Expanded: ${found.join(', ')}\n`;
   }
-  
   if (notFound.length > 0) {
-    context += `Unknown workflows (not found): ${notFound.join(', ')}\n`;
+    context += `Not found: ${notFound.join(', ')}\n`;
     suggestions.forEach((suggestion, typo) => {
-      context += `SUGGESTION: User typed "//${typo}". Did they mean "//${suggestion}"? If so, please ask them.\n`;
+      context += `Did you mean //${suggestion} instead of //${typo}?\n`;
     });
   }
-  
-  if (found.length > 0) {
-    context += `INSTRUCTION: Apply ALL workflow instructions above to your response.\n`;
-  }
-  
   context += `</workflows-context>\n`;
   return context;
 }
@@ -190,22 +203,52 @@ const DISTINCTION_RULE = `
 </system-rule>
 `;
 
+async function showToast(
+  ctx: PluginInput,
+  message: string,
+  variant: "info" | "success" | "warning" | "error" = "info",
+  title?: string,
+  duration = 3000
+) {
+  try {
+    await ctx.client.tui.publish({
+      body: {
+        type: "tui.toast.show",
+        properties: { title, message, variant, duration }
+      }
+    });
+  } catch {}
+}
+
 export const WorkflowsPlugin: Plugin = async (ctx: PluginInput) => {
   const { directory } = ctx;
   let workflows = loadWorkflows(directory);
 
-  const workflowNames = [...workflows.keys()].join(', ') || '(none)';
-  console.log(`Workflows: ${workflows.size} available [${workflowNames}]`);
-
   return {
-    // Inject DISTINCTION_RULE into system prompt
     "experimental.chat.system.transform": async (
-      _input: Record<string, never>,
+      input: { agent?: string },
       output: { system: string[] }
     ) => {
       const hasRule = output.system.some(s => s.includes("DISTINCTION RULE"));
       if (!hasRule) {
         output.system.push(DISTINCTION_RULE);
+      }
+
+      const activeAgent = (input as any).agent as string | undefined;
+      const catalogEntries = [...workflows.values()]
+        .filter(w => w.autoworkflow)
+        .filter(w => w.agents.length === 0 || (activeAgent && w.agents.includes(activeAgent)))
+        .map(w => {
+          const tagsStr = w.tags.length > 0 ? ` [${w.tags.join(', ')}]` : '';
+          const aliasStr = w.aliases.length > 0 ? ` (aliases: ${w.aliases.join(', ')})` : '';
+          return `//${w.name}${aliasStr}: ${w.description || 'No description'}${tagsStr}`;
+        });
+
+      if (catalogEntries.length > 0) {
+        output.system.push(
+          `<workflow-catalog>\n${catalogEntries.join('\n')}\n</workflow-catalog>\n` +
+          `If user's request matches a workflow's tags or description, suggest it.`
+        );
       }
     },
 
@@ -229,8 +272,28 @@ export const WorkflowsPlugin: Plugin = async (ctx: PluginInput) => {
           if (part.type === "text" && "text" in part) {
             const textPart = part as { type: "text"; text: string };
             const mentions = detectWorkflowMentions(textPart.text);
-            
-            if (mentions.length === 0) continue;
+
+            if (mentions.length === 0) {
+              const activeAgent = _input.agent;
+              const userContent = textPart.text.toLowerCase();
+
+              const hints = [...workflows.values()]
+                .filter(w => w.autoworkflow)
+                .filter(w => w.agents.length === 0 || (activeAgent && w.agents.includes(activeAgent)))
+                .filter(w => {
+                  const matchesTags = w.tags.some(t => userContent.includes(t.toLowerCase()));
+                  const matchesDesc = w.description && userContent.includes(w.description.toLowerCase().slice(0, 20));
+                  const matchesAlias = w.aliases.some(a => userContent.includes(a.toLowerCase()));
+                  const matchesName = userContent.includes(w.name.toLowerCase());
+                  return matchesTags || matchesDesc || matchesAlias || matchesName;
+                })
+                .map(w => `//${w.name}`);
+
+              if (hints.length > 0) {
+                textPart.text += `\n\n[Relevant workflows: ${hints.join(', ')}]`;
+              }
+              continue;
+            }
 
             const { expanded, found, notFound, suggestions } = expandWorkflowMentions(
               textPart.text,
@@ -247,11 +310,11 @@ export const WorkflowsPlugin: Plugin = async (ctx: PluginInput) => {
               textPart.text = expanded + workflowContext;
             }
 
-            console.log(`[opencode-workflows] Expanded ${found.length} workflow(s): ${found.join(', ')}`);
+            showToast(ctx, `Expanded: ${found.join(', ')}`, "success", "Workflows");
           }
         }
       } catch (error) {
-        console.error("[opencode-workflows] Error in chat.message hook", error);
+        showToast(ctx, String(error), "error", "Workflows Error");
       }
     },
 
@@ -294,7 +357,11 @@ export const WorkflowsPlugin: Plugin = async (ctx: PluginInput) => {
           }
 
           const list = [...workflows.values()]
-            .map((w) => `- //${w.name} [${w.source}]: ${w.content.slice(0, 80).replace(/\n/g, ' ').trim()}...`)
+            .filter((w, i, arr) => arr.findIndex(x => x.name === w.name) === i)
+            .map((w) => {
+              const aliasStr = w.aliases.length > 0 ? ` (aliases: ${w.aliases.join(', ')})` : '';
+              return `- //${w.name}${aliasStr} [${w.source}]: ${w.description || w.content.slice(0, 80).replace(/\n/g, ' ').trim()}...`;
+            })
             .join('\n');
 
           return `Available workflows (${workflows.size}):\n\n${list}\n\nUsage: Add //workflow-name anywhere in your message to apply that workflow.`;
