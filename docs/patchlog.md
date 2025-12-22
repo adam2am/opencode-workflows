@@ -1,5 +1,17 @@
 # Patchlog
 
+## [1.2.2] - 2025-12-22
+
+### Added
+- Positional argument support: `//review(src/index.ts)` → `{{args._}}`
+- Quoted positional args: `//review("path with spaces.ts")`
+- 94 unit tests (up from 85)
+
+### Changed
+- Single value without `key=` is now treated as the default positional arg `_`
+- Named args still work: `//review(file=src/index.ts)` → `{{args.file}}`
+
+
 ## [1.2.1] - 2025-12-22
 
 ### Added

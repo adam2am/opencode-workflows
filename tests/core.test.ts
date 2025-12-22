@@ -239,35 +239,80 @@ describe('detectWorkflowMentions', () => {
     const result = detectWorkflowMentions('//review(file="path with spaces.ts")');
     expect(result).toEqual([{ name: 'review', force: false, args: { file: 'path with spaces.ts' } }]);
   });
+
+  test('detects mention with positional arg', () => {
+    const result = detectWorkflowMentions('//review(src/index.ts)');
+    expect(result).toEqual([{ name: 'review', force: false, args: { _: 'src/index.ts' } }]);
+  });
+
+  test('detects mention with quoted positional arg', () => {
+    const result = detectWorkflowMentions('//review("path with spaces.ts")');
+    expect(result).toEqual([{ name: 'review', force: false, args: { _: 'path with spaces.ts' } }]);
+  });
+
+  test('detects mention with positional and force', () => {
+    const result = detectWorkflowMentions('//review(src/index.ts)!');
+    expect(result).toEqual([{ name: 'review', force: true, args: { _: 'src/index.ts' } }]);
+  });
 });
 
 describe('parseWorkflowArgs', () => {
-  test('parses single arg', () => {
-    expect(parseWorkflowArgs('file=test.ts')).toEqual({ file: 'test.ts' });
+  describe('named args', () => {
+    test('parses single arg', () => {
+      expect(parseWorkflowArgs('file=test.ts')).toEqual({ file: 'test.ts' });
+    });
+
+    test('parses multiple args', () => {
+      expect(parseWorkflowArgs('file=test.ts, depth=3')).toEqual({ file: 'test.ts', depth: '3' });
+    });
+
+    test('parses double-quoted value with spaces', () => {
+      expect(parseWorkflowArgs('file="path with spaces.ts"')).toEqual({ file: 'path with spaces.ts' });
+    });
+
+    test('parses single-quoted value', () => {
+      expect(parseWorkflowArgs("name='test'")).toEqual({ name: 'test' });
+    });
+
+    test('mixed quoted and unquoted', () => {
+      expect(parseWorkflowArgs('file="my file.ts", count=5')).toEqual({ file: 'my file.ts', count: '5' });
+    });
   });
 
-  test('parses multiple args', () => {
-    expect(parseWorkflowArgs('file=test.ts, depth=3')).toEqual({ file: 'test.ts', depth: '3' });
+  describe('positional args (single value without key=)', () => {
+    test('single positional becomes _', () => {
+      expect(parseWorkflowArgs('src/index.ts')).toEqual({ _: 'src/index.ts' });
+    });
+
+    test('positional with spaces in quotes', () => {
+      expect(parseWorkflowArgs('"path with spaces.ts"')).toEqual({ _: 'path with spaces.ts' });
+    });
+
+    test('positional with single quotes', () => {
+      expect(parseWorkflowArgs("'my file.ts'")).toEqual({ _: 'my file.ts' });
+    });
+
+    test('simple word positional', () => {
+      expect(parseWorkflowArgs('foo')).toEqual({ _: 'foo' });
+    });
+
+    test('number positional', () => {
+      expect(parseWorkflowArgs('123')).toEqual({ _: '123' });
+    });
   });
 
-  test('parses double-quoted value with spaces', () => {
-    expect(parseWorkflowArgs('file="path with spaces.ts"')).toEqual({ file: 'path with spaces.ts' });
-  });
+  describe('edge cases', () => {
+    test('empty string returns empty object', () => {
+      expect(parseWorkflowArgs('')).toEqual({});
+    });
 
-  test('parses single-quoted value', () => {
-    expect(parseWorkflowArgs("name='test'")).toEqual({ name: 'test' });
-  });
+    test('undefined returns empty object', () => {
+      expect(parseWorkflowArgs(undefined)).toEqual({});
+    });
 
-  test('empty string returns empty object', () => {
-    expect(parseWorkflowArgs('')).toEqual({});
-  });
-
-  test('undefined returns empty object', () => {
-    expect(parseWorkflowArgs(undefined)).toEqual({});
-  });
-
-  test('mixed quoted and unquoted', () => {
-    expect(parseWorkflowArgs('file="my file.ts", count=5')).toEqual({ file: 'my file.ts', count: '5' });
+    test('whitespace only returns empty object', () => {
+      expect(parseWorkflowArgs('   ')).toEqual({});
+    });
   });
 });
 

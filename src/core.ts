@@ -41,14 +41,24 @@ const WORKFLOW_MENTION_PATTERN = /(?<![:\w/])\/\/([a-zA-Z0-9][a-zA-Z0-9_-]*)(?:\
 export function parseWorkflowArgs(argsString: string | undefined): Record<string, string> {
   if (!argsString) return {};
 
+  const trimmed = argsString.trim();
+  if (!trimmed) return {};
+
   const args: Record<string, string> = {};
   const argPattern = /(\w+)=(?:"([^"]*)"|'([^']*)'|([^\s,]+))/g;
 
+  let hasNamedArgs = false;
   let match;
-  while ((match = argPattern.exec(argsString)) !== null) {
+  while ((match = argPattern.exec(trimmed)) !== null) {
+    hasNamedArgs = true;
     const key = match[1];
     const value = match[2] ?? match[3] ?? match[4];
     args[key] = value;
+  }
+
+  if (!hasNamedArgs) {
+    const quotedMatch = trimmed.match(/^["'](.*)["']$/);
+    args._ = quotedMatch ? quotedMatch[1] : trimmed;
   }
 
   return args;
