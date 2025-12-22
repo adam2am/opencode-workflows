@@ -1,6 +1,6 @@
 {
   "name": "opencode-workflows",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Inline workflow mentions for OpenCode - use //workflow-name anywhere in your prompts",
   "type": "module",
   "main": "dist/index.js",
@@ -29,7 +29,8 @@
   "scripts": {
     "build": "bun build src/index.ts --outdir=dist --target=node --format=esm && bun run build:types",
     "build:types": "tsc --emitDeclarationOnly --declaration --outDir dist",
-    "prepublishOnly": "bun run build"
+    "prepublishOnly": "bun run build",
+    "b": "bun run build"
   },
   "dependencies": {
     "@opencode-ai/plugin": "latest"
