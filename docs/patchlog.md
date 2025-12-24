@@ -1,5 +1,33 @@
 # Patchlog
 
+## [1.0.1] - 2025-12-24
+
+### Added
+- Trigger word highlighting - matched keywords wrapped in `[]` in your message (e.g., `[5 approaches]`)
+- Adjacent keywords merge into single bracket for cleaner display
+- Debug logging infrastructure (disabled by default, toggle in `debug-config.ts`)
+
+### Changed
+- Auto-match hint format improved: only header wrapped, workflow name as `//[name]`
+
+
+## [1.0.0] - 2025-12-24
+
+### Added
+- **Captain rebrand** - 3-in-1 plugin: Workflows + Rules + Crew
+- **Rules module** - Silent constraint injection via `.captain/rules/` markdown files
+- **Crew module** - Define custom agents in `.captain/crew/` that auto-inject into specific agents
+- Modular architecture: `core/`, `orders/`, `rules/`, `crew/` separation
+
+### Changed
+- Plugin renamed from `opencode-workflows` to `opencode-captain`
+- All "workflow" terminology internally renamed to "order" (external API unchanged)
+- Codebase restructured into pure logic modules (no I/O in engine files)
+
+---
+
+# Legacy opencode-workflows changelog (pre-rebrand)
+
 ## [1.5.0] - 2025-12-24
 
 ### Added

@@ -30,6 +30,7 @@ import {
   formatAutoApplyHint,
   formatSuggestion,
   highlightMatchedWords,
+  sanitizeUserMessage,
   processMessageText,
   expandOrderMentions,
   findMatchingAutoOrders,
@@ -302,10 +303,13 @@ export const WorkflowsPlugin: Plugin = async (ctx: PluginInput) => {
               if (processedAutoApply.has(messageID)) continue;
               
               const activeAgent = _input.agent;
-              const alreadyReferenced = extractOrderReferences(textPart.text);
+              const cleanText = sanitizeUserMessage(textPart.text);
+              textPart.text = cleanText;
+              
+              const alreadyReferenced = extractOrderReferences(cleanText);
 
               const { autoApply, expandedApply, matchedKeywords } = findMatchingAutoOrders(
-                textPart.text,
+                cleanText,
                 [...workflows.values()],
                 activeAgent,
                 alreadyReferenced
@@ -316,11 +320,11 @@ export const WorkflowsPlugin: Plugin = async (ctx: PluginInput) => {
 
               const allKeywords = [...matchedKeywords.values()].flat();
               log('logHighlight', 'allKeywords:', allKeywords);
-              log('logHighlight', 'textPart.text BEFORE:', textPart.text);
+              log('logHighlight', 'textPart.text BEFORE highlight:', textPart.text);
               
               if (allKeywords.length > 0) {
                 textPart.text = highlightMatchedWords(textPart.text, allKeywords);
-                log('logHighlight', 'textPart.text AFTER:', textPart.text);
+                log('logHighlight', 'textPart.text AFTER highlight:', textPart.text);
               }
 
               if (autoApply.length > 0) {

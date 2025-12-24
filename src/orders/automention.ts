@@ -136,6 +136,51 @@ export function highlightMatchedWords(text: string, keywords: string[]): string 
   return result;
 }
 
+
+/**
+ * Strips existing workflow hint blocks from text.
+ * Handles both themes (Workflow/Orders) and corrupted/partial hints.
+ * 
+ * @example
+ * stripExistingHints("hello\n\n[⚡ Workflow matched]\n↳ //[test]...")
+ * // => "hello"
+ */
+export function stripExistingHints(text: string): string {
+  // Match from hint opening to end of text (handles complete + corrupted)
+  // Supports both themes: "Workflow matched" and "Orders matched"
+  // Also catches partial corruption like "[⚡ Workflow" or "[⚡ Orders"
+  const hintPattern = /\n*\[⚡ (?:Workflow|Orders)[\s\S]*$/i;
+  return text.replace(hintPattern, '').trim();
+}
+
+/**
+ * Strips highlight brackets [keyword] added by highlightMatchedWords().
+ * Only removes single-word or adjacent-word brackets, not other bracket content.
+ * 
+ * @example
+ * stripHighlightBrackets("[5 approaches] to solve")
+ * // => "5 approaches to solve"
+ */
+export function stripHighlightBrackets(text: string): string {
+  // Match brackets containing words (our highlight format)
+  // Preserves brackets that are clearly not highlights (e.g., [use_workflow:...])
+  return text.replace(/\[(\w+(?:\s+\w+)*)\]/g, '$1');
+}
+
+/**
+ * Sanitizes user message by removing all plugin-added content.
+ * Call this BEFORE any processing to ensure idempotent transforms.
+ * 
+ * @example
+ * sanitizeUserMessage("[5 approaches] here\n\n[⚡ Workflow matched]...")
+ * // => "5 approaches here"
+ */
+export function sanitizeUserMessage(text: string): string {
+  let clean = stripExistingHints(text);
+  clean = stripHighlightBrackets(clean);
+  return clean.trim();
+}
+
 export function findSpawnOrders(
   orders: Order[],
   activeAgent: string
