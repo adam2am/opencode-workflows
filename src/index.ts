@@ -34,6 +34,13 @@ import {
 } from './orders';
 import type { Order, OrderRef, AutomentionMode, OrderInOrderMode } from './orders';
 
+// Rules module imports
+import {
+  loadRules,
+  processRulesForAgent,
+} from './rules';
+import type { Rule } from './rules';
+
 // Type aliases for backward compatibility in this file
 type Workflow = Order;
 type WorkflowRef = OrderRef;
@@ -120,6 +127,7 @@ function buildWorkflowSystemPrompt(workflows: Map<string, Workflow>, activeAgent
 export const WorkflowsPlugin: Plugin = async (ctx: PluginInput) => {
   const { directory } = ctx;
   let workflows = loadOrders(directory);
+  let rules = loadRules(directory);
   let config = loadConfig();
 
   const contextVariables: Record<string, VariableResolver> = {
@@ -139,21 +147,23 @@ export const WorkflowsPlugin: Plugin = async (ctx: PluginInput) => {
     "chat.params": async (params: Record<string, unknown>) => {
       try {
         workflows = loadOrders(directory);
+        rules = loadRules(directory);
         
         const input = params.input as Record<string, unknown> | undefined;
         if (!input) return;
 
         const activeAgent = input.agent as string | undefined;
         const workflowSystemContent = buildWorkflowSystemPrompt(workflows, activeAgent);
+        const rulesContent = processRulesForAgent(rules, activeAgent);
         
         const existingSystemPrompt = input.systemPrompt as string | undefined;
         if (existingSystemPrompt?.includes("DISTINCTION RULE")) return;
 
-        if (existingSystemPrompt) {
-          input.systemPrompt = `${existingSystemPrompt}\n\n${workflowSystemContent}`;
-        } else {
-          input.systemPrompt = workflowSystemContent;
-        }
+        let newSystemPrompt = existingSystemPrompt || '';
+        newSystemPrompt += workflowSystemContent;
+        newSystemPrompt += rulesContent;
+        
+        input.systemPrompt = newSystemPrompt;
       } catch (error) {
         console.error("Workflows: Error in chat.params hook", error);
       }
@@ -503,7 +513,7 @@ export const WorkflowsPlugin: Plugin = async (ctx: PluginInput) => {
         },
         async execute(args) {
           const scope = args.scope || 'global';
-          const filePath = getPromptPath(args.name, scope, directory);
+          const filePath = getPromptPath(args.name, scope, 'order', directory);
 
           if (existsSync(filePath)) {
             return `Error: Workflow "${args.name}" already exists in ${scope} scope. Use edit_workflow to modify it.`;
@@ -559,7 +569,7 @@ export const WorkflowsPlugin: Plugin = async (ctx: PluginInput) => {
         },
         async execute(args) {
           const scope = args.scope || 'global';
-          const filePath = getPromptPath(args.name, scope, directory);
+          const filePath = getPromptPath(args.name, scope, 'order', directory);
 
           if (!existsSync(filePath) && !args.createIfMissing) {
             return `Error: Workflow "${args.name}" not found in ${scope} scope. Set createIfMissing=true to create it.`;
@@ -579,7 +589,7 @@ export const WorkflowsPlugin: Plugin = async (ctx: PluginInput) => {
         },
         async execute(args) {
           const scope = args.scope || 'global';
-          const filePath = getPromptPath(args.name, scope, directory);
+          const filePath = getPromptPath(args.name, scope, 'order', directory);
 
           if (!existsSync(filePath)) {
             return `Error: Workflow "${args.name}" not found in ${scope} scope.`;
@@ -600,8 +610,8 @@ export const WorkflowsPlugin: Plugin = async (ctx: PluginInput) => {
         },
         async execute(args) {
           const scope = args.scope || 'global';
-          const oldPath = getPromptPath(args.oldName, scope, directory);
-          const newPath = getPromptPath(args.newName, scope, directory);
+          const oldPath = getPromptPath(args.oldName, scope, 'order', directory);
+          const newPath = getPromptPath(args.newName, scope, 'order', directory);
 
           if (!existsSync(oldPath)) {
             return `Error: Workflow "${args.oldName}" not found in ${scope} scope.`;
@@ -628,6 +638,143 @@ export const WorkflowsPlugin: Plugin = async (ctx: PluginInput) => {
 
           const workflowList = [...workflows.keys()].map((w) => `//${w}`).join(', ') || 'none';
           return `Workflows reloaded.\n\nPrevious: ${oldCount}\nCurrent: ${newCount}\nAvailable: ${workflowList}`;
+        },
+      }),
+
+      list_rules: tool({
+        description: 'List all available rules/constraints that are injected into the system prompt',
+        args: {
+          folder: tool.schema.string().describe('Filter by subfolder').optional(),
+          name: tool.schema.string().describe('Filter by name (partial match)').optional(),
+          scope: tool.schema.enum(['global', 'project']).describe('Filter by scope').optional(),
+        },
+        async execute(args) {
+          rules = loadRules(directory);
+          const seen = new Set<string>();
+          const filtered = [...rules.values()].filter(r => {
+            if (seen.has(r.name)) return false;
+            seen.add(r.name);
+            if (args.folder && r.folder !== args.folder) return false;
+            if (args.name && !r.name.toLowerCase().includes(args.name.toLowerCase())) return false;
+            if (args.scope && r.source !== args.scope) return false;
+            return true;
+          });
+
+          if (filtered.length === 0) {
+            return 'No rules found.\n\nHint: Create .md files in ~/.config/opencode/rules/ or .opencode/rules/';
+          }
+
+          return filtered.map(r => {
+            const agentStr = r.onlyFor.length > 0 ? ` (agents: ${r.onlyFor.join(', ')})` : ' (all agents)';
+            return `${r.name}${agentStr}: ${r.description || 'No description'}`;
+          }).join('\n');
+        },
+      }),
+
+      get_rule: tool({
+        description: 'Get the content of a specific rule',
+        args: {
+          name: tool.schema.string().describe('The rule name'),
+        },
+        async execute(args) {
+          rules = loadRules(directory);
+          const rule = rules.get(args.name);
+
+          if (!rule) {
+            const available = [...rules.keys()];
+            const availableStr = available.length > 0 ? available.join(', ') : 'none';
+            return `Rule "${args.name}" not found.\n\nAvailable: ${availableStr}`;
+          }
+
+          return `# Rule: ${rule.name}\nSource: ${rule.source}\nPath: ${rule.path}\n\n${rule.content}`;
+        },
+      }),
+
+      create_rule: tool({
+        description: 'Create a new rule (constraint) that gets silently injected into the system prompt for matching agents',
+        args: {
+          name: tool.schema.string().describe('The rule name'),
+          content: tool.schema.string().describe('The markdown content of the rule'),
+          scope: tool.schema.enum(['global', 'project']).describe('Where to save').optional(),
+          description: tool.schema.string().describe('Short description of the rule').optional(),
+          onlyFor: tool.schema.string().describe('Comma-separated agent names this rule applies to. Empty = all agents').optional(),
+        },
+        async execute(args) {
+          const scope = args.scope || 'global';
+          const filePath = getPromptPath(args.name, scope, 'rule', directory);
+
+          if (existsSync(filePath)) {
+            return `Error: Rule "${args.name}" already exists. Use edit_rule to modify it.`;
+          }
+
+          const onlyForArray = args.onlyFor ? args.onlyFor.split(',').map(a => a.trim()).filter(a => a) : [];
+
+          let frontmatter = '---\n';
+          if (args.description) frontmatter += `description: "${args.description}"\n`;
+          if (onlyForArray.length > 0) frontmatter += `onlyFor: [${onlyForArray.join(', ')}]\n`;
+          frontmatter += '---\n\n';
+
+          const fullContent = frontmatter + args.content;
+          writeFileSync(filePath, fullContent, 'utf-8');
+          rules = loadRules(directory);
+
+          const agentMsg = onlyForArray.length > 0 ? `\nApplies to: ${onlyForArray.join(', ')}` : '\nApplies to: all agents';
+          return `Rule "${args.name}" created in ${scope} scope.\nPath: ${filePath}${agentMsg}`;
+        },
+      }),
+
+      edit_rule: tool({
+        description: 'Edit an existing rule',
+        args: {
+          name: tool.schema.string().describe('The rule name'),
+          content: tool.schema.string().describe('The new markdown content (including frontmatter)'),
+          scope: tool.schema.enum(['global', 'project']).describe('Scope of the rule').optional(),
+          createIfMissing: tool.schema.boolean().describe('Create if it does not exist').optional(),
+        },
+        async execute(args) {
+          const scope = args.scope || 'global';
+          const filePath = getPromptPath(args.name, scope, 'rule', directory);
+
+          if (!existsSync(filePath) && !args.createIfMissing) {
+            return `Error: Rule "${args.name}" not found. Set createIfMissing=true to create it.`;
+          }
+
+          writeFileSync(filePath, args.content, 'utf-8');
+          rules = loadRules(directory);
+          return `Rule "${args.name}" updated successfully.`;
+        },
+      }),
+
+      delete_rule: tool({
+        description: 'Delete a rule',
+        args: {
+          name: tool.schema.string().describe('The rule name'),
+          scope: tool.schema.enum(['global', 'project']).describe('Scope of the rule').optional(),
+        },
+        async execute(args) {
+          const scope = args.scope || 'global';
+          const filePath = getPromptPath(args.name, scope, 'rule', directory);
+
+          if (!existsSync(filePath)) {
+            return `Error: Rule "${args.name}" not found in ${scope} scope.`;
+          }
+
+          unlinkSync(filePath);
+          rules = loadRules(directory);
+          return `Rule "${args.name}" deleted successfully.`;
+        },
+      }),
+
+      reload_rules: tool({
+        description: 'Reload all rules from disk',
+        args: {},
+        async execute() {
+          const oldCount = rules.size;
+          rules = loadRules(directory);
+          const newCount = rules.size;
+
+          const ruleList = [...new Set([...rules.values()].map(r => r.name))].join(', ') || 'none';
+          return `Rules reloaded.\n\nPrevious: ${oldCount}\nCurrent: ${newCount}\nAvailable: ${ruleList}`;
         },
       }),
     },

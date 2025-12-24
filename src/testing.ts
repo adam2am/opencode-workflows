@@ -11,7 +11,7 @@
 import { findByName, findBestMatch, expandVariables, shortId } from './core';
 import type { VariableResolver } from './core';
 import { detectOrderMentions } from './orders';
-import type { OrderInOrderMode, AutomentionMode, SpawnAtEntry } from './orders';
+import type { OrderInOrderMode, AutomentionMode, SpawnAtEntry, Order } from './orders';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
@@ -22,6 +22,23 @@ export type { VariableResolver } from './core';
 const detectWorkflowMentions = detectOrderMentions;
 const findWorkflowByName = findByName;
 type WorkflowInWorkflowMode = OrderInOrderMode;
+
+export function createMockOrder(partial: Partial<Order> & { name: string }): Order {
+  return {
+    promptType: 'order',
+    aliases: [],
+    tags: [],
+    onlyFor: [],
+    spawnAt: [],
+    description: '',
+    automention: 'true',
+    orderInOrder: 'false',
+    content: '',
+    source: 'global',
+    path: `/mock/${partial.name}.md`,
+    ...partial,
+  };
+}
 
 export interface WorkflowInfo {
   name: string;

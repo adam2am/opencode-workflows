@@ -25,6 +25,7 @@ export function loadOrders(projectDir: string): Map<string, Order> {
     const parsed = parseOrderFrontmatter(fileContent);
     return {
       name,
+      promptType: 'order',
       aliases: parsed.aliases,
       tags: parsed.tags,
       onlyFor: parsed.onlyFor,

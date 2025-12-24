@@ -34,6 +34,7 @@ export interface BasePrompt {
   source: 'project' | 'global';
   path: string;
   folder?: string;             // Subfolder for organization
+  promptType: PromptType;      // Derived from folder location
 }
 
 /**

@@ -21,10 +21,11 @@ import {
   extractOrderReferences,
   findMatchingAutoOrders,
   formatAutoApplyHint,
-  formatAutoApplyHintLegacy,
   formatUserHint,
 } from '../src/orders';
 import type { Order } from '../src/orders';
+// Test helpers
+import { createMockOrder } from '../src/testing';
 
 // Backward compat aliases for test readability
 const findWorkflowByName = findByName;
@@ -849,27 +850,21 @@ describe('expandOrphanWorkflowRefs', () => {
 });
 
 describe('findMatchingAutoWorkflows', () => {
-  // Using imported findMatchingAutoOrders (aliased as findMatchingAutoWorkflows)
-
-  const patchlogWorkflow = {
+  const patchlogWorkflow = createMockOrder({
     name: 'patchlog',
     aliases: ['patchnote'],
     tags: [['patchlog', 'commit']],
-    onlyFor: [],
-    spawnAt: [],
     description: 'Generate a structured patchlog entry for documentation',
-    automention: 'true' as const
-  };
+    automention: 'true'
+  });
 
-  const reviewWorkflow = {
+  const reviewWorkflow = createMockOrder({
     name: 'code-review',
     aliases: ['cr'],
     tags: ['review', 'code'],
-    onlyFor: [],
-    spawnAt: [],
     description: 'Review code changes',
-    automention: 'true' as const
-  };
+    automention: 'true'
+  });
 
   test('matches when AND group tags all present', () => {
     const result = findMatchingAutoWorkflows(
@@ -1105,22 +1100,13 @@ describe('Unicode workflow names', () => {
 });
 
 describe('formatAutoApplyHint', () => {
-  const createOrder = (name: string, description: string): Order => ({
+  const mockOrder = (name: string, description: string): Order => createMockOrder({
     name,
     description,
-    aliases: [],
-    tags: [],
-    onlyFor: [],
-    spawnAt: [],
-    automention: 'true',
-    orderInOrder: 'false',
-    content: '',
-    source: 'global',
-    path: ''
   });
 
   test('wraps output in brackets', () => {
-    const orders = new Map([['test', createOrder('test', 'Test desc')]]);
+    const orders = new Map([['test', mockOrder('test', 'Test desc')]]);
     const keywords = new Map([['test', ['keyword1']]]);
     const result = formatAutoApplyHint(['test'], orders, keywords);
     expect(result.startsWith('[')).toBe(true);
@@ -1128,7 +1114,7 @@ describe('formatAutoApplyHint', () => {
   });
 
   test('uses regular space instead of zero-width space', () => {
-    const orders = new Map([['test', createOrder('test', 'Test desc')]]);
+    const orders = new Map([['test', mockOrder('test', 'Test desc')]]);
     const keywords = new Map([['test', ['keyword1']]]);
     const result = formatAutoApplyHint(['test'], orders, keywords);
     expect(result).not.toContain('\u200B');
@@ -1136,7 +1122,7 @@ describe('formatAutoApplyHint', () => {
   });
 
   test('singular header for one workflow (standard theme)', () => {
-    const orders = new Map([['test', createOrder('test', 'Test desc')]]);
+    const orders = new Map([['test', mockOrder('test', 'Test desc')]]);
     const keywords = new Map<string, string[]>();
     const result = formatAutoApplyHint(['test'], orders, keywords, 'standard');
     expect(result).toContain('⚡ Workflow matched');
@@ -1144,29 +1130,19 @@ describe('formatAutoApplyHint', () => {
 
   test('plural header for multiple workflows (standard theme)', () => {
     const orders = new Map([
-      ['test1', createOrder('test1', 'Test 1')],
-      ['test2', createOrder('test2', 'Test 2')]
+      ['test1', mockOrder('test1', 'Test 1')],
+      ['test2', mockOrder('test2', 'Test 2')]
     ]);
     const keywords = new Map<string, string[]>();
     const result = formatAutoApplyHint(['test1', 'test2'], orders, keywords, 'standard');
-    // Both use same message key 'ordersMatched' so same text
     expect(result).toContain('⚡ Workflow matched');
   });
 
   test('includes matched keywords', () => {
-    const orders = new Map([['test', createOrder('test', 'Test desc')]]);
+    const orders = new Map([['test', mockOrder('test', 'Test desc')]]);
     const keywords = new Map([['test', ['security', 'audit']]]);
     const result = formatAutoApplyHint(['test'], orders, keywords);
     expect(result).toContain('(matched: "security", "audit")');
-  });
-});
-
-describe('formatAutoApplyHintLegacy', () => {
-  test('uses regular space instead of zero-width space', () => {
-    const descriptions = new Map([['test', 'Test desc']]);
-    const result = formatAutoApplyHintLegacy(['test'], descriptions);
-    expect(result).not.toContain('\u200B');
-    expect(result).toContain('// test');
   });
 });
 

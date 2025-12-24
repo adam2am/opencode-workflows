@@ -9,6 +9,7 @@ export interface SpawnAtEntry {
 }
 
 export interface Order extends BasePrompt {
+  promptType: 'order';
   automention: AutomentionMode;
   orderInOrder: OrderInOrderMode;
   spawnAt: SpawnAtEntry[];

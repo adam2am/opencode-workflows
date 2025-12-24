@@ -11,6 +11,12 @@ export function shortId(messageID: string, salt: string = '', expansionChain: st
   return hash.toString(36);
 }
 
-export function showToast(app: any, title: string, message: string): void {
-  app.toast({ title, message });
+export function showToast(
+  ctx: unknown,
+  message: string,
+  variant: 'success' | 'info' | 'warning' | 'error' = 'info',
+  title?: string
+): void {
+  const app = ctx as { toast?: (opts: { title: string; message: string; variant?: string }) => void };
+  app.toast?.({ title: title || 'Workflows', message, variant });
 }
