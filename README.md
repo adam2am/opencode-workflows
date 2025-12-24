@@ -1,14 +1,18 @@
-# opencode-workflows
+# opencode-captain
 
-Inline workflow mentions for OpenCode - use `//workflow-name` anywhere in your prompts!
+Captain your AI with **Orders**, **Rules**, and **Crews** - a unified prompt management system for OpenCode.
 
 ## What is this?
 
-This plugin enables you to reference workflow templates inline in your messages using `//workflow-name` syntax. Instead of repeating long instructions, just mention a workflow and the AI will expand it automatically.
+opencode-captain is a plugin that manages three types of prompt templates:
 
-## Usage
+| Type | Trigger | Behavior | Use Case |
+|------|---------|----------|----------|
+| **Orders** | `//name` in messages | Expand on demand, toast notification | Dynamic workflows, review checklists |
+| **Rules** | Automatic | Silent injection into system prompt | Coding standards, style guides |
+| **Crews** | Agent spawn | Configure agent behavior | Agent-specific instructions (Phase 4) |
 
-Simply use `//workflow-name` anywhere in your message:
+## Quick Start
 
 ```
 Review this auth system like //linus-torvalds and think about it //5-approaches
@@ -18,149 +22,47 @@ Review this auth system like //linus-torvalds and think about it //5-approaches
 
 The plugin automatically:
 1. Detects the `//linus-torvalds` and `//5-approaches` mentions
-2. Expands them into full workflow content wrapped in `<workflow>` tags
-3. Injects instructions for the AI to apply all workflows
+2. Expands them into full content wrapped in `<order>` tags
+3. Injects any matching rules silently into the system prompt
 
-## Naming Rules
-
-| Format | Example | Valid? |
-|--------|---------|--------|
-| Hyphens | `//my-workflow` | Yes |
-| Numbers | `//5-approaches` | Yes |
-| Underscores | `//my_workflow` | Yes |
-| CamelCase | `//MyWorkflow` | Yes |
-| Unicode | `//проверка-кода` | Yes |
-| Unicode | `//代码审查` | Yes |
-| **Spaces** | `//my workflow` | **No** - stops at space |
-
-**Important**: Spaces break the tag. `//5 approaches` captures only `//5`.
-
-## Smart Auto-Suggestions
-
-Workflows with `automention` enabled can be automatically suggested based on your message content.
-
-### Automention Modes
-
-| Mode | YAML Value | Behavior |
-|------|------------|----------|
-| **Auto-apply** | `automention: true` | AI fetches and applies the workflow automatically if relevant _(default)_ |
-| **Expanded** | `automention: expanded` | Workflow content is injected directly (fully expanded, no fetch needed) |
-| **Disabled** | `automention: false` | No auto-suggestion |
-
-> **Note**: The legacy `autoworkflow` field is still supported for backward compatibility. `hintForUser` is mapped to `true`.
-
-### Example
-
-If you have a workflow with:
-```yaml
 ---
-automention: true
-description: "Security audit using OWASP Top 10"
-tags: [security, audit, vulnerability]
----
-```
 
-And you type: "Can you check this code for security issues?"
+## Orders (Dynamic Workflows)
 
-The plugin detects the matching tags and appends:
-```
-[⚡ Workflow matched.
-ACTION_REQUIRED: IF matches user intent → get_workflow("name"), else SKIP
-↳ // security-audit (matched: "security", "check")
-↳ Desc: "Security audit using OWASP Top 10"]
-```
+Orders are triggered explicitly with `//name` syntax in your messages.
 
-The AI will automatically fetch and apply the workflow.
-
-For `automention: expanded`, the workflow content is injected directly without requiring a fetch.
-
-## Smart Suggestions ("Did you mean?")
-
-If you type a partial or incorrect workflow name, the plugin suggests the correct one:
-
-```
-You: analyze this //5 approaches
-AI: I noticed you typed "//5". Did you mean "//5-approaches"?
-```
-
-The plugin matches:
-- **Prefix**: `//5` → `//5-approaches`
-- **Partial**: `//torvalds` → `//linus-torvalds`
-
-## Available Workflows
-
-| Workflow | Description |
-|----------|-------------|
-| `//5-approaches` | Analyze from 5 perspectives: first principles, inversion, analogies, blue sky, MVP |
-| `//inspect` | Inspect staged changes before commit - full review pipeline |
-| `//linus-torvalds` | Kernel maintainer code review style - direct, focused on data structures, KISS |
-| `//patchlog` | Generate structured patchlog entry for documentation |
-| `//security-audit` | OWASP Top 10 security review checklist |
-
-## Creating Custom Workflows
-
-### Using the Tool (Recommended)
-
-Use the `create_workflow` tool - the AI will ask you for:
-1. Global or project scope?
-2. Shortcuts/aliases?
-3. Description?
-4. Tags for auto-suggestion?
-5. Autoworkflow mode?
-
-### Manual Creation
-
-Create `.md` files in one of these locations:
+### Folder Locations
 
 | Location | Scope | Priority |
 |----------|-------|----------|
-| `.opencode/workflows/` | Project-specific | Highest |
+| `.opencode/orders/` | Project | Highest |
+| `.opencode/workflows/` | Project | Highest |
+| `.opencode/commands/` | Project | Highest |
+| `~/.config/opencode/orders/` | Global | Lower |
 | `~/.config/opencode/workflows/` | Global | Lower |
+| `~/.config/opencode/commands/` | Global | Lower |
 
-Project workflows override global ones with the same name.
+Project orders override global ones with the same name.
 
-### Organizing with Subfolders
+### Order File Format
 
-Workflows can be organized into subfolders for better organization:
-
-```
-~/.config/opencode/workflows/
-├── security/
-│   ├── audit.md          → //audit
-│   └── vulnerability.md  → //vulnerability
-├── review/
-│   ├── code-review.md    → //code-review
-│   └── pr-review.md      → //pr-review
-└── general.md            → //general
-```
-
-**Key points:**
-- Subfolder structure is for organization only - workflow names remain unique
-- Use `list_workflows` with `folder` filter to find workflows in specific folders
-- Workflows in subfolders show their folder path in listings
-
-### Workflow File Format
-
-The filename becomes the workflow name:
-
-**`~/.config/opencode/workflows/my-workflow.md`** → `//my-workflow`
+**`~/.config/opencode/orders/my-order.md`** -> `//my-order`
 
 ```markdown
 ---
-description: "Short description of what this workflow does"
-shortcuts: [mw, my-wf]
+description: "Short description of what this order does"
+shortcuts: [mo, my-o]
 tags: [review, check, analyze]
 automention: true
+onlyFor: [oracle, frontend]
+spawnAt: [frontend:expanded]
 ---
-# My Custom Workflow
+# My Custom Order
 
-Instructions for the AI to follow when this workflow is mentioned.
+Instructions for the AI to follow when this order is mentioned.
 
 ## Step 1
 Do this thing...
-
-## Step 2
-Then do this...
 ```
 
 ### Frontmatter Options
@@ -168,204 +70,143 @@ Then do this...
 | Field | Type | Description |
 |-------|------|-------------|
 | `description` | string | Short description shown in catalog |
-| `shortcuts` / `aliases` | array | Alternative names to trigger this workflow |
-| `tags` | array | Keywords for auto-suggestion matching (supports tag groups) |
+| `shortcuts` / `aliases` | array | Alternative names to trigger this order |
+| `tags` | array | Keywords for auto-suggestion matching |
 | `automention` | `true` / `expanded` / `false` | Auto-suggestion mode (default: `true`) |
-| `workflowInWorkflow` | `true` / `hints` / `false` | Nested workflow expansion mode (default: `false`) |
-| `onlyFor` | array | Limit visibility to specific agents (e.g., `[frontend, oracle]`) |
-| `spawnAt` | array | Inject workflow when an agent spawns (e.g., `[frontend:expanded, oracle]`) |
+| `orderInOrder` | `true` / `hints` / `false` | Nested order expansion mode (default: `false`) |
+| `onlyFor` | array | Limit visibility to specific agents |
+| `spawnAt` | array | Inject when agent spawns (e.g., `[frontend:expanded]`) |
 
-### Tag Groups (Smart Matching)
+### Order Tools
 
-Tags support **groups**, **OR alternatives**, and **phrase matching** for precise matching:
+| Tool | Description |
+|------|-------------|
+| `list_workflows` | List all available orders |
+| `get_workflow` | Get a specific order's content |
+| `create_workflow` | Create a new order |
+| `edit_workflow` | Edit an existing order |
+| `rename_workflow` | Rename an order |
+| `delete_workflow` | Delete an order |
+| `reload_workflows` | Reload orders from disk |
+| `expand_workflows` | Manually expand `//mentions` in text |
+
+---
+
+## Rules (Silent Constraints)
+
+Rules are automatically injected into the system prompt based on the active agent. They run silently without toast notifications.
+
+### Folder Locations
+
+| Location | Scope |
+|----------|-------|
+| `.opencode/rules/` | Project |
+| `.opencode/creeds/` | Project |
+| `.opencode/code/` | Project |
+| `~/.config/opencode/rules/` | Global |
+| `~/.config/opencode/creeds/` | Global |
+| `~/.config/opencode/code/` | Global |
+
+### Rule File Format
+
+**`~/.config/opencode/rules/typescript-style.md`**
+
+```markdown
+---
+description: "TypeScript coding standards"
+onlyFor: [frontend, oracle]
+---
+# TypeScript Style Guide
+
+- Use `const` over `let` where possible
+- Prefer explicit return types on functions
+- Use strict null checks
+```
+
+### Frontmatter Options
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `description` | string | Short description |
+| `onlyFor` | array | Only inject for these agents (empty = all agents) |
+
+### Rule Tools
+
+| Tool | Description |
+|------|-------------|
+| `list_rules` | List all available rules |
+| `get_rule` | Get a specific rule's content |
+| `create_rule` | Create a new rule |
+| `edit_rule` | Edit an existing rule |
+| `delete_rule` | Delete a rule |
+| `reload_rules` | Reload rules from disk |
+
+### How Rules Work
+
+1. On every message, the plugin checks the active agent
+2. Rules with matching `onlyFor` (or no `onlyFor`) are collected
+3. Rule content is injected into the system prompt
+4. No toast notification - completely silent
+
+**Example**: A `typescript-style` rule with `onlyFor: [frontend]` only injects when the `frontend` agent is active.
+
+---
+
+## Crews (Agent Definitions) - Coming in Phase 4
+
+Crews will define agent-specific configurations and behaviors. Stay tuned!
+
+---
+
+## Smart Features
+
+### Auto-Suggestions (Automention)
+
+Orders with `automention` enabled are suggested based on message content:
+
+| Mode | Behavior |
+|------|----------|
+| `automention: true` | AI fetches and applies automatically if relevant |
+| `automention: expanded` | Content injected directly (no fetch needed) |
+| `automention: false` | No auto-suggestion |
+
+### Tag Matching
+
+Tags support groups, OR alternatives, and phrase matching:
 
 ```yaml
-tags: [commit, [staged, changes], patchnote|patchlog, [check my, commit]]
+tags: [commit, [staged, changes], patchnote|patchlog]
 ```
 
 | Tag Type | Example | Triggers When |
 |----------|---------|---------------|
-| **Single** | `commit` | Word present (needs ≥2 singles to trigger) |
-| **Group (AND)** | `[staged, changes]` | ALL words in group present (triggers immediately) |
-| **OR** | `patchnote\|patchlog` | ANY word matches (counts as 1 single match) |
-| **Phrase** | `[check my, commit]` | Phrase "check my" as substring + "commit" present |
-
-**Phrase Matching:**
-Spaces inside group items create **exact phrase matches**. The phrase must appear as a substring in that exact order:
-- `[review my, changes]` → matches "can you review my changes" ✓
-- `[review my, changes]` → does NOT match "my review of changes" ✗ (wrong order)
-
-**Matching Rules:**
-- A **group match** (all items present) triggers the workflow immediately
-- **Single tags** need ≥2 matches to trigger
-- **OR tags** count as ONE single match if any alternative matches
-- **Phrases** match as literal substrings (order matters!)
-- Matching **workflow name**, **alias**, or **description** also triggers
-
-**Examples:**
-
-| User Message | Matches | Triggers? |
-|--------------|---------|-----------|
-| "check my staged changes" | Group `[staged, changes]` ✓ | ✅ YES |
-| "commit this code" | Single `commit` only | ❌ NO (only 1 single) |
-| "commit and review" | Singles `commit` + `review` | ✅ YES (2 singles) |
-| "generate patchlog" | OR `patchnote\|patchlog` (1 match) | ❌ NO (only 1 single) |
-| "patchlog for commit" | OR `patchnote\|patchlog` + `commit` | ✅ YES (2 singles) |
-| "check my commit" | Phrase `check my` + `commit` ✓ | ✅ YES |
-| "my check commit" | Phrase `check my` ✗ (wrong order) | ❌ NO |
-
-### Shortcuts / Aliases
-
-You can define multiple names for the same workflow:
-
-```markdown
----
-shortcuts: [cr, review_commit, commit-review]
----
-# Commit Review Workflow
-```
-
-Now `//cr`, `//review_commit`, and `//commit-review` all trigger the same workflow.
+| **Single** | `commit` | Word present (needs >=2 singles) |
+| **Group (AND)** | `[staged, changes]` | ALL words present (triggers immediately) |
+| **OR** | `patchnote\|patchlog` | ANY word matches |
 
 ### Agent Spawn Injection
 
-Workflows can be automatically injected when specific agents are spawned. Use the `spawnAt` field to configure this:
+Orders can auto-inject when specific agents spawn:
 
 ```yaml
----
-description: "Frontend best practices"
-spawnAt: [frontend:expanded, frontend-ui-ux-engineer]
----
-# Frontend Guidelines
-
-Always use semantic HTML...
+spawnAt: [frontend:expanded, oracle]
 ```
-
-**Syntax**: `agent-name` or `agent-name:mode`
-
-| Mode | Behavior |
-|------|----------|
-| (default) | Shows hint to fetch the workflow |
-| `:expanded` | Injects full workflow content immediately |
-
-**Example**: When a `frontend` agent spawns for the first time in a session, the workflow above would be injected with its full content (`:expanded` mode).
-
-### Visibility Filtering (onlyFor)
-
-Limit which agents can see a workflow during auto-suggestion:
-
-```yaml
----
-description: "Oracle-only architecture guide"
-automention: true
-onlyFor: [oracle]
----
-```
-
-This workflow will only be auto-suggested when the `oracle` agent is active, not for other agents.
-
-## Tools Provided
-
-| Tool | Description |
-|------|-------------|
-| `list_workflows` | List all available workflows (supports filters) |
-| `get_workflow` | Get a specific workflow's content |
-| `create_workflow` | Create a new workflow with proper frontmatter |
-| `edit_workflow` | Edit an existing workflow |
-| `rename_workflow` | Rename a workflow |
-| `delete_workflow` | Delete a workflow |
-| `reload_workflows` | Reload workflows from disk |
-| `expand_workflows` | Manually expand `//mentions` in text |
-
-### list_workflows Arguments
-
-| Argument | Required | Description |
-|----------|----------|-------------|
-| `tag` | No | Filter by tag (substring match) |
-| `name` | No | Filter by name (substring match) |
-| `folder` | No | Filter by folder (substring match) |
-| `scope` | No | Filter by scope (`global` or `project`) |
-
-**Examples:**
-- `list_workflows(folder="security")` - list workflows in `security/` subfolder
-- `list_workflows(tag="review")` - list workflows with "review" tag
-- `list_workflows(scope="project")` - list only project-specific workflows
-
-### create_workflow Arguments
-
-| Argument | Required | Description |
-|----------|----------|-------------|
-| `name` | Yes | Workflow name (without `//` prefix) |
-| `content` | Yes | Markdown content (frontmatter added automatically) |
-| `scope` | No | `global` or `project` (default: `global`) |
-| `shortcuts` | No | Comma-separated aliases, e.g., `"cr, review"` |
-| `description` | No | Short description of the workflow |
-| `tags` | No | Comma-separated tags for auto-suggestion |
-| `automention` | No | `true` / `expanded` / `false` (default: `true`) |
-| `onlyFor` | No | Comma-separated agent names for visibility filter |
-| `spawnAt` | No | Comma-separated agent spawn triggers, e.g., `"frontend:expanded, oracle"` |
-
-## How It Works
-
-1. **Startup**: Plugin loads all `.md` files from workflow directories
-2. **Detection**: When you send a message, the plugin scans for `//pattern` mentions
-3. **Expansion**: Valid mentions are replaced with full workflow content in `<workflow>` tags
-4. **Auto-suggestion**: If no explicit mentions, checks for matching autoworkflows based on tags/description
-5. **Deduplication**: Repeated mentions in the same message become `[use_workflow:name-id]` references
-6. **Session Tracking**: Workflows used in previous messages are referenced, not re-expanded
-7. **Suggestions**: Invalid mentions trigger "Did you mean?" suggestions
 
 ### Smart Deduplication
 
-When you mention the same workflow multiple times in one message:
+Repeated mentions become references:
+- First `//linus-torvalds` -> full expansion
+- Second `//linus-torvalds` -> `[use_order:linus-torvalds-abc1]`
 
+### Nested Orders
+
+Orders can reference other orders:
+
+```yaml
+orderInOrder: true
 ```
-Analyze this //linus-torvalds style, then apply //linus-torvalds to refactor
-```
 
-The plugin expands the **first** mention fully and converts subsequent mentions to references:
-- First `//linus-torvalds` → `<workflow name="linus-torvalds">...</workflow>`
-- Second `//linus-torvalds` → `[use_workflow:linus-torvalds-abc1]`
-
-This prevents context bloat while maintaining workflow availability.
-
-### Nested Workflows
-
-Workflows can reference other workflows using the same `//workflow-name` syntax.
-
-Control nested expansion with `workflowInWorkflow` in frontmatter:
-
-| Mode | YAML Value | Behavior |
-|------|------------|----------|
-| **Disabled** | `workflowInWorkflow: false` | Nested mentions stay as `//name` (default) |
-| **Enabled** | `workflowInWorkflow: true` | Nested mentions are fully expanded |
-| **Hints** | `workflowInWorkflow: hints` | Shows hint about available nested workflows |
-
-**Example:**
-```markdown
 ---
-workflowInWorkflow: true
----
-# Parent Workflow
-
-First, apply //5-approaches to analyze the problem.
-Then use //linus-torvalds review style.
-```
-
-When `workflowInWorkflow: true`, nested `//5-approaches` and `//linus-torvalds` are expanded inline.
-
-**Safety limits:**
-- Max nesting depth: 3 (configurable via `maxNestingDepth` in config)
-- Circular references are detected and prevented
-
-### Pattern Matching
-
-The workflow mention pattern ensures:
-- URLs like `https://example.com` are ignored
-- File paths like `/usr/local//bin` are ignored  
-- Comments like `// This is a comment` are ignored (space breaks token)
-- Unicode workflow names are fully supported (Cyrillic, Chinese, etc.)
-- Only valid workflow tokens are captured
 
 ## Installation
 
@@ -373,21 +214,21 @@ Add to your `opencode.json`:
 
 ```json
 {
-  "plugin": ["opencode-workflows"]
+  "plugin": ["opencode-captain"]
 }
 ```
 
 Or for local development:
 
 ```bash
-cd ~/.config/opencode/plugin/opencode-workflows
+cd ~/.config/opencode/plugin/opencode-captain
 bun install
 bun run build
 ```
 
 ## Configuration
 
-The plugin creates a configuration file at `~/.config/opencode/workflows.json` on first run:
+Config file: `~/.config/opencode/captain.json`
 
 ```json
 {
@@ -396,12 +237,23 @@ The plugin creates a configuration file at `~/.config/opencode/workflows.json` o
 }
 ```
 
-### Options
+---
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `deduplicateSameMessage` | `true` | When enabled, repeated workflow mentions in the same message become references (`[use_workflow:...]`) instead of full expansions. Set to `false` to always expand all mentions. |
-| `maxNestingDepth` | `3` | Maximum depth for nested workflow expansion. Prevents runaway recursion. |
+## Migration from opencode-workflows
+
+opencode-captain is fully backward compatible:
+
+1. All existing workflow files work as-is
+2. `workflows/` and `commands/` folders are still recognized
+3. All workflow tools (`list_workflows`, etc.) continue to work
+4. Simply rename the plugin in your `opencode.json`
+
+**New capabilities:**
+- Rules for silent constraint injection
+- Unified architecture for future features
+- Better organized codebase
+
+---
 
 ## License
 

@@ -41,6 +41,13 @@ import {
 } from './rules';
 import type { Rule } from './rules';
 
+// Crew module imports
+import {
+  loadCrews,
+  registerCrewsWithConfig,
+} from './crew';
+import type { Crew } from './crew';
+
 // Type aliases for backward compatibility in this file
 type Workflow = Order;
 type WorkflowRef = OrderRef;
@@ -128,6 +135,7 @@ export const WorkflowsPlugin: Plugin = async (ctx: PluginInput) => {
   const { directory } = ctx;
   let workflows = loadOrders(directory);
   let rules = loadRules(directory);
+  let crews = loadCrews(directory);
   let config = loadConfig();
 
   const contextVariables: Record<string, VariableResolver> = {
@@ -167,6 +175,12 @@ export const WorkflowsPlugin: Plugin = async (ctx: PluginInput) => {
       } catch (error) {
         console.error("Workflows: Error in chat.params hook", error);
       }
+    },
+
+    // Register crews as agents in the config
+    config: async (config: { agent?: Record<string, unknown> }) => {
+      crews = loadCrews(directory);
+      config.agent = registerCrewsWithConfig(crews, config.agent);
     },
 
     // FALLBACK: experimental.chat.system.transform for older OpenCode versions
@@ -775,6 +789,160 @@ export const WorkflowsPlugin: Plugin = async (ctx: PluginInput) => {
 
           const ruleList = [...new Set([...rules.values()].map(r => r.name))].join(', ') || 'none';
           return `Rules reloaded.\n\nPrevious: ${oldCount}\nCurrent: ${newCount}\nAvailable: ${ruleList}`;
+        },
+      }),
+
+      list_crew: tool({
+        description: 'List all available crew agents that can be invoked via the Task tool',
+        args: {
+          folder: tool.schema.string().describe('Filter by subfolder').optional(),
+          name: tool.schema.string().describe('Filter by name (partial match)').optional(),
+          scope: tool.schema.enum(['global', 'project']).describe('Filter by scope').optional(),
+        },
+        async execute(args) {
+          crews = loadCrews(directory);
+          const seen = new Set<string>();
+          const filtered = [...crews.values()].filter(c => {
+            if (seen.has(c.name)) return false;
+            seen.add(c.name);
+            if (args.folder && c.folder !== args.folder) return false;
+            if (args.name && !c.name.toLowerCase().includes(args.name.toLowerCase())) return false;
+            if (args.scope && c.source !== args.scope) return false;
+            return true;
+          });
+
+          if (filtered.length === 0) {
+            return 'No crew found.\n\nHint: Create .md files in ~/.config/opencode/crew/ or .opencode/crew/';
+          }
+
+          return filtered.map(c => {
+            const modeStr = c.mode === 'agent' ? '[agent]' : '[subagent]';
+            const modelStr = c.model ? ` model=${c.model}` : '';
+            const toolsStr = c.tools && c.tools.length > 0 ? ` tools=${c.tools.join(',')}` : '';
+            return `${c.name} ${modeStr}${modelStr}${toolsStr}: ${c.description || 'No description'}`;
+          }).join('\n');
+        },
+      }),
+
+      get_crew: tool({
+        description: 'Get the content of a specific crew agent definition',
+        args: {
+          name: tool.schema.string().describe('The crew name'),
+        },
+        async execute(args) {
+          crews = loadCrews(directory);
+          const crew = crews.get(args.name);
+
+          if (!crew) {
+            const available = [...crews.keys()];
+            const availableStr = available.length > 0 ? available.join(', ') : 'none';
+            return `Crew "${args.name}" not found.\n\nAvailable: ${availableStr}`;
+          }
+
+          const modeStr = crew.mode === 'agent' ? 'agent' : 'subagent';
+          const modelStr = crew.model ? `\nModel: ${crew.model}` : '';
+          const tempStr = crew.temperature !== undefined ? `\nTemperature: ${crew.temperature}` : '';
+          const toolsStr = crew.tools && crew.tools.length > 0 ? `\nTools: ${crew.tools.join(', ')}` : '';
+          
+          return `# Crew: ${crew.name}\nSource: ${crew.source}\nMode: ${modeStr}${modelStr}${tempStr}${toolsStr}\nPath: ${crew.path}\n\n${crew.content}`;
+        },
+      }),
+
+      create_crew: tool({
+        description: 'Create a new crew agent definition. Crews are markdown files that define agents invokable via the Task tool.',
+        args: {
+          name: tool.schema.string().describe('The crew name'),
+          content: tool.schema.string().describe('The markdown content (system prompt for the agent)'),
+          scope: tool.schema.enum(['global', 'project']).describe('Where to save').optional(),
+          description: tool.schema.string().describe('Short description of the crew').optional(),
+          model: tool.schema.string().describe('Model to use (e.g., "claude-3-opus", "gpt-4")').optional(),
+          temperature: tool.schema.number().describe('Temperature setting (0-1)').optional(),
+          tools: tool.schema.string().describe('Comma-separated list of tools to enable').optional(),
+          mode: tool.schema.enum(['agent', 'subagent']).describe('Agent mode: agent (top-level) or subagent (delegated)').optional(),
+          onlyFor: tool.schema.string().describe('Comma-separated agent names this crew is visible to').optional(),
+        },
+        async execute(args) {
+          const scope = args.scope || 'global';
+          const filePath = getPromptPath(args.name, scope, 'crew', directory);
+
+          if (existsSync(filePath)) {
+            return `Error: Crew "${args.name}" already exists. Use edit_crew to modify it.`;
+          }
+
+          const onlyForArray = args.onlyFor ? args.onlyFor.split(',').map(a => a.trim()).filter(a => a) : [];
+          const toolsArray = args.tools ? args.tools.split(',').map(t => t.trim()).filter(t => t) : [];
+
+          let frontmatter = '---\n';
+          if (args.description) frontmatter += `description: "${args.description}"\n`;
+          if (args.model) frontmatter += `model: ${args.model}\n`;
+          if (args.temperature !== undefined) frontmatter += `temperature: ${args.temperature}\n`;
+          if (toolsArray.length > 0) frontmatter += `tools: [${toolsArray.join(', ')}]\n`;
+          if (args.mode) frontmatter += `mode: ${args.mode}\n`;
+          if (onlyForArray.length > 0) frontmatter += `onlyFor: [${onlyForArray.join(', ')}]\n`;
+          frontmatter += '---\n\n';
+
+          const fullContent = frontmatter + args.content;
+          writeFileSync(filePath, fullContent, 'utf-8');
+          crews = loadCrews(directory);
+
+          const modeMsg = args.mode ? `\nMode: ${args.mode}` : '\nMode: subagent (default)';
+          const modelMsg = args.model ? `\nModel: ${args.model}` : '';
+          return `Crew "${args.name}" created in ${scope} scope.\nPath: ${filePath}${modeMsg}${modelMsg}`;
+        },
+      }),
+
+      edit_crew: tool({
+        description: 'Edit an existing crew agent definition',
+        args: {
+          name: tool.schema.string().describe('The crew name'),
+          content: tool.schema.string().describe('The new markdown content (including frontmatter)'),
+          scope: tool.schema.enum(['global', 'project']).describe('Scope of the crew').optional(),
+          createIfMissing: tool.schema.boolean().describe('Create if it does not exist').optional(),
+        },
+        async execute(args) {
+          const scope = args.scope || 'global';
+          const filePath = getPromptPath(args.name, scope, 'crew', directory);
+
+          if (!existsSync(filePath) && !args.createIfMissing) {
+            return `Error: Crew "${args.name}" not found. Set createIfMissing=true to create it.`;
+          }
+
+          writeFileSync(filePath, args.content, 'utf-8');
+          crews = loadCrews(directory);
+          return `Crew "${args.name}" updated successfully.`;
+        },
+      }),
+
+      delete_crew: tool({
+        description: 'Delete a crew agent definition',
+        args: {
+          name: tool.schema.string().describe('The crew name'),
+          scope: tool.schema.enum(['global', 'project']).describe('Scope of the crew').optional(),
+        },
+        async execute(args) {
+          const scope = args.scope || 'global';
+          const filePath = getPromptPath(args.name, scope, 'crew', directory);
+
+          if (!existsSync(filePath)) {
+            return `Error: Crew "${args.name}" not found in ${scope} scope.`;
+          }
+
+          unlinkSync(filePath);
+          crews = loadCrews(directory);
+          return `Crew "${args.name}" deleted successfully.`;
+        },
+      }),
+
+      reload_crew: tool({
+        description: 'Reload all crew agent definitions from disk',
+        args: {},
+        async execute() {
+          const oldCount = crews.size;
+          crews = loadCrews(directory);
+          const newCount = crews.size;
+
+          const crewList = [...new Set([...crews.values()].map(c => c.name))].join(', ') || 'none';
+          return `Crew reloaded.\n\nPrevious: ${oldCount}\nCurrent: ${newCount}\nAvailable: ${crewList}`;
         },
       }),
     },

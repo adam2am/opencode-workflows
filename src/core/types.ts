@@ -21,7 +21,7 @@ export type TagEntry = string | (string | TagOrGroup)[] | TagOrGroup;
 export type PromptType = 'order' | 'rule' | 'crew';
 
 /**
- * Base interface for all prompt types (orders, rules, crews).
+ * Base interface for all prompt types (orders, rules, crew).
  * Shared fields that appear in all prompt markdown files.
  */
 export interface BasePrompt {

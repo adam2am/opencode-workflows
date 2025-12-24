@@ -35,6 +35,7 @@ describe('Bug Fixes Regression Tests', () => {
 
   describe('Bug 2: Auto-apply triggers for already-referenced workflows', () => {
     const workflow: Workflow = {
+      promptType: 'order',
       name: '5-approaches',
       aliases: ['5a'],
       tags: [['5', 'approaches']],
@@ -91,6 +92,7 @@ describe('Bug Fixes Regression Tests', () => {
 
   describe('Bug 3: False positive hint on "// 5 approaches"', () => {
     const workflow: Workflow = {
+      promptType: 'order',
       name: '5-approaches',
       aliases: ['5a'],
       tags: [['5', 'approaches']],

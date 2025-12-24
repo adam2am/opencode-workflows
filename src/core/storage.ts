@@ -7,7 +7,7 @@ import { parseBaseFrontmatter } from './parser';
 export const FOLDER_ALIASES: Record<PromptType, string[]> = {
   order: ['orders', 'workflows', 'commands'],
   rule: ['rules', 'creeds', 'code'],
-  crew: ['crews', 'agents', 'crew'],
+  crew: ['crew', 'agents', 'mates'],
 };
 
 export interface PromptDir {

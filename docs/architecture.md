@@ -10,7 +10,7 @@ This plugin unifies **Orders** (dynamic instructions), **Rules** (static constra
 |---------|----------------|---------|----------|---------|
 | **Orders** | `orders/` | `workflows/`, `commands/` | Dynamic instructions | User mentions `//name` |
 | **Rules** | `rules/` | `creeds/`, `code/` | Static constraints | Auto-injected every message |
-| **Crews** | `crews/` | `agents/`, `crew/` | Agent definitions | Future: agent spawning |
+| **Crew** | `crew/` | `agents/`, `mates/` | Agent definitions | Agent spawning via config hook |
 
 ## Core Principles
 
@@ -33,7 +33,7 @@ Users can customize folder names and messaging via config.
 ├── rules/           # The Rules (constraints)
 │   ├── global-style.md
 │   └── oracle-guidelines.md
-└── crews/           # The Crew (agents) - Future
+└── crew/            # The Crew (agent definitions)
     └── frontend-specialist.md
 
 # All of these also work (backwards compat):
@@ -41,7 +41,8 @@ Users can customize folder names and messaging via config.
 ├── creeds/          # Alias for rules/
 ├── code/            # Alias for rules/
 ├── commands/        # Alias for orders/
-└── agents/          # Alias for crews/
+├── agents/          # Alias for crew/
+└── mates/           # Alias for crew/
 ```
 
 ## Configuration
@@ -53,7 +54,7 @@ Users can customize folder names and messaging via config.
   "folders": {
     "orders": ["orders", "workflows", "commands"],
     "rules": ["rules", "creeds", "code"],
-    "crews": ["crews", "agents", "crew"]
+    "crew": ["crew", "agents", "mates"]
   },
   
   // Messaging theme (auto-detected from folder name, or override)
@@ -112,7 +113,7 @@ opencode-captain/
 │   │   ├── tools.ts             # list_rules, get_rule, create_rule, etc.
 │   │   └── hooks.ts             # chat.params injection
 │   │
-│   └── crews/                   # Crew-specific logic (agents) - Future
+│   └── crew/                   # Crew-specific logic (agents) - Future
 │       ├── types.ts             # CrewMember interface
 │       ├── engine.ts            # Crew management
 │       └── tools.ts             # list_crew, get_crew, etc.
@@ -121,7 +122,7 @@ opencode-captain/
 │   ├── core/
 │   ├── orders/
 │   ├── rules/
-│   └── crews/
+│   └── crew/
 │
 └── docs/
     └── architecture.md          # This file
@@ -205,18 +206,35 @@ interface Rule extends BasePrompt {
 }
 ```
 
-### Crew Type (Agents) - Future
+### Crew Type (Agents)
 
 ```typescript
-// crews/types.ts
+// crew/types.ts
 
-interface CrewMember extends BasePrompt {
+interface Crew extends BasePrompt {
   promptType: 'crew';
-  role: string;              // e.g., "frontend", "oracle"
-  capabilities: string[];    // What this crew member can do
-  defaultModel?: string;     // Preferred model
+  
+  // Agent configuration (maps to opencode's AgentConfig)
+  model?: string;           // Override model for this agent
+  temperature?: number;     // Override temperature
+  tools?: string[];         // Enabled tools list (e.g., ['write', 'edit', 'bash'])
+  mode?: 'agent' | 'subagent';  // Default: 'subagent'
 }
-```
+
+interface ParsedCrewFrontmatter {
+  aliases: string[];
+  tags: TagEntry[];
+  onlyFor: string[];
+  description: string;
+  body: string;
+  
+  // Crew-specific
+  model?: string;
+  temperature?: number;
+  tools?: string[];       // Parsed from comma-separated string
+  mode?: 'agent' | 'subagent';
+}
+
 
 ## Storage Layer
 
@@ -390,10 +408,121 @@ autoorder: true
 2. Add configurable messaging
 3. Update toast messages based on theme
 
-### Phase 4: Crews (Future)
-1. Create `crews/` module
-2. Agent definition loading
-3. Agent spawning integration
+### Phase 4: Crews (Agent Definitions)
+
+Crews are user-defined agents loaded from markdown files. They leverage ALL existing infrastructure.
+
+**What Crews Are:**
+- Markdown files in `crew/`, `agents/`, or `mates/` folders
+- Converted to opencode's `AgentConfig` objects
+- Registered with `config.agent` so Task tool can invoke them
+- NO custom orchestration - uses opencode's built-in Task tool
+
+**What Crews Are NOT:**
+- NOT our own agent runtime
+- NOT async agent calls (use opencode's sync Task tool)
+- NOT agent-to-agent protocols (let prompts say "use Task to call X")
+
+#### Phase 4 Tasks
+
+| Task ID | File | Description |
+|---------|------|-------------|
+| p4-1 | `src/crew/types.ts` | Crew interface extending BasePrompt, ParsedCrewFrontmatter |
+| p4-2 | `src/crew/parser.ts` | parseCrewFrontmatter using core parser + crew-specific fields |
+| p4-3 | `src/crew/engine.ts` | crewToAgentConfig() converter, filterCrewsByAgent() |
+| p4-4 | `src/crew/tools.ts` | loadCrews, createCrewsState, listCrews, getCrew, createCrew, editCrew, deleteCrew, renameCrew |
+| p4-5 | `src/crew/hooks.ts` | registerCrewsWithConfig() - adds crew to config.agent |
+| p4-6 | `src/crew/index.ts` | Barrel export |
+| p4-7 | `src/index.ts` | Import crews, load on startup, register in config hook, add 6 crew tools |
+| p4-8 | `tests/crews.test.ts` | Unit tests for crews module |
+
+#### Crew File Format
+
+```markdown
+---
+description: "Marketing copywriter for headlines and body copy"
+model: anthropic/claude-sonnet-4
+temperature: 0.7
+tools: write, edit, webfetch
+mode: subagent
+onlyFor: [marketer, content-team]
+---
+# Copywriter Agent
+
+You are a world-class copywriter specializing in...
+
+## Guidelines
+- Write headlines that grab attention
+- Use the brand voice from our style guide
+```
+
+#### Integration with OpenCode
+
+```typescript
+// In config hook:
+config: async (config) => {
+  // Convert crews to AgentConfig objects
+  const crewAgents = crewsToAgentConfigs(state.crews);
+  
+  // Register with opencode's agent system
+  config.agent = {
+    ...config.agent,
+    ...crewAgents,
+  };
+}
+
+// crewToAgentConfig converter:
+function crewToAgentConfig(crew: Crew): AgentConfig {
+  return {
+    description: crew.description,
+    mode: crew.mode || 'subagent',
+    prompt: crew.content,
+    model: crew.model,
+    temperature: crew.temperature,
+    tools: crew.tools 
+      ? Object.fromEntries(crew.tools.map(t => [t, true]))
+      : undefined,
+  };
+}
+```
+
+#### Use Case: Marketer → Copywriter Delegation
+
+**`crew/marketer.md`:**
+```markdown
+---
+description: "Marketing strategist who coordinates campaigns"
+model: anthropic/claude-sonnet-4
+tools: write, edit, task
+---
+# Marketer Agent
+
+You coordinate marketing campaigns.
+
+## Delegation
+When you need copy written:
+- Use the Task tool to invoke the "copywriter" agent
+- Provide clear briefs with target audience and tone
+- Review and iterate on the output
+```
+
+**`crew/copywriter.md`:**
+```markdown
+---
+description: "Expert copywriter for headlines and body copy"
+model: anthropic/claude-sonnet-4
+temperature: 0.8
+tools: write, edit
+---
+# Copywriter Agent
+
+You write compelling marketing copy...
+```
+
+**How It Works:**
+1. User invokes marketer via Task tool
+2. Marketer's prompt tells it to use Task tool for copywriter
+3. opencode handles the invocation - we just provide the agent configs
 
 ### Phase 5: Rename & Release
 1. Rename package to `opencode-captain`
@@ -485,3 +614,29 @@ autoorder: true
 
 ### To `rules/hooks.ts`
 - `chat.params` handler for silent rule injection
+
+### To `crew/types.ts`
+- `Crew` interface (extends BasePrompt)
+- `ParsedCrewFrontmatter` interface
+
+### To `crew/parser.ts`
+- `parseCrewFrontmatter()` - parses crew-specific frontmatter (model, temperature, tools, mode)
+
+### To `crew/engine.ts`
+- `crewToAgentConfig()` - converts Crew to opencode's AgentConfig
+- `crewsToAgentConfigs()` - batch convert all crews
+- `filterCrewsByAgent()` - optional agent filtering
+
+### To `crew/tools.ts`
+- `loadCrews()` - load crews from disk
+- `createCrewsState()` - initialize state
+- `listCrews()` - list available crews
+- `getCrew()` - get crew by name
+- `createCrew()` - create new crew
+- `editCrew()` - edit existing crew
+- `deleteCrew()` - delete crew
+- `renameCrew()` - rename crew
+- `reloadCrews()` - reload from disk
+
+### To `crew/hooks.ts`
+- `registerCrewsWithConfig()` - adds crews to config.agent in config hook

@@ -33,6 +33,7 @@ description: "Test workflow"
 
   test('expandNestedWorkflows blocks expansion when orderInOrder="false"', () => {
     const parentWorkflow: Workflow = {
+      promptType: 'order',
       name: 'patchlog',
       aliases: [],
       tags: [],
@@ -47,6 +48,7 @@ description: "Test workflow"
     };
 
     const nestedWorkflow: Workflow = {
+      promptType: 'order',
       name: '5-approaches',
       aliases: [],
       tags: [],
@@ -99,6 +101,7 @@ description: "Test workflow"
     };
 
     const nestedWorkflow: Workflow = {
+      promptType: 'order',
       name: '5-approaches',
       aliases: [],
       tags: [],
