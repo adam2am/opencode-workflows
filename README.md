@@ -1,6 +1,6 @@
 # opencode-captain
 
-Captain your AI with **Orders**, **Rules**, and **Crews** - a unified prompt management system for OpenCode.
+Captain your AI with **Orders**, **Rules**, and **Crew** - a unified prompt management system for OpenCode.
 
 ## What is this?
 
@@ -10,7 +10,7 @@ opencode-captain is a plugin that manages three types of prompt templates:
 |------|---------|----------|----------|
 | **Orders** | `//name` in messages | Expand on demand, toast notification | Dynamic workflows, review checklists |
 | **Rules** | Automatic | Silent injection into system prompt | Coding standards, style guides |
-| **Crews** | Agent spawn | Configure agent behavior | Agent-specific instructions (Phase 4) |
+| **Crew** | Config hook | Register as OpenCode agents | Custom agents, specialists, delegates |
 
 ## Quick Start
 
@@ -22,8 +22,9 @@ Review this auth system like //linus-torvalds and think about it //5-approaches
 
 The plugin automatically:
 1. Detects the `//linus-torvalds` and `//5-approaches` mentions
-2. Expands them into full content wrapped in `<order>` tags
+2. Expands them into full content wrapped in `<workflow>` tags
 3. Injects any matching rules silently into the system prompt
+4. Registers crew members as available agents
 
 ---
 
@@ -152,9 +153,77 @@ onlyFor: [frontend, oracle]
 
 ---
 
-## Crews (Agent Definitions) - Coming in Phase 4
+## Crew (Agent Definitions)
 
-Crews will define agent-specific configurations and behaviors. Stay tuned!
+Crew members are markdown files that define custom agents. They're registered with OpenCode via the `config` hook and can be invoked using the Task tool.
+
+### Folder Locations
+
+| Location | Scope |
+|----------|-------|
+| `.opencode/crew/` | Project |
+| `.opencode/agents/` | Project |
+| `.opencode/mates/` | Project |
+| `~/.config/opencode/crew/` | Global |
+| `~/.config/opencode/agents/` | Global |
+| `~/.config/opencode/mates/` | Global |
+
+### Crew File Format
+
+**`~/.config/opencode/crew/code-reviewer.md`**
+
+```markdown
+---
+description: "Expert code reviewer"
+model: claude-3-opus
+temperature: 0.3
+tools: [read, glob, grep]
+mode: subagent
+onlyFor: [oracle]
+---
+You are an expert code reviewer. Analyze code for:
+
+- Code quality and best practices
+- Potential bugs and edge cases
+- Performance considerations
+- Security vulnerabilities
+
+Be thorough but concise. Provide actionable feedback.
+```
+
+### Frontmatter Options
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `description` | string | Short description shown in agent list |
+| `model` | string | Model to use (e.g., `claude-3-opus`, `gpt-4`) |
+| `temperature` | number | Temperature setting (0-1) |
+| `tools` | array | Tools to enable for this agent |
+| `mode` | `agent` / `subagent` | Top-level agent or delegated subagent (default: `subagent`) |
+| `onlyFor` | array | Only visible to these parent agents |
+
+### Crew Tools
+
+| Tool | Description |
+|------|-------------|
+| `list_crew` | List all crew members |
+| `get_crew` | Get a crew member's definition |
+| `create_crew` | Add a new crew member |
+| `edit_crew` | Edit a crew member |
+| `delete_crew` | Remove a crew member |
+| `reload_crew` | Reload crew from disk |
+
+### How Crew Works
+
+1. On plugin load, crew files are parsed from `crew/`, `agents/`, or `mates/` folders
+2. Each crew member is converted to an AgentConfig
+3. Crew is registered with OpenCode via the `config` hook
+4. Agents become available for invocation via the Task tool
+
+**Example**: Create a `frontend-expert` crew member, then delegate to it:
+```
+Task(agent="frontend-expert", prompt="Review this React component")
+```
 
 ---
 
@@ -196,7 +265,7 @@ spawnAt: [frontend:expanded, oracle]
 
 Repeated mentions become references:
 - First `//linus-torvalds` -> full expansion
-- Second `//linus-torvalds` -> `[use_order:linus-torvalds-abc1]`
+- Second `//linus-torvalds` -> `[use_workflow:linus-torvalds-abc1]`
 
 ### Nested Orders
 
@@ -250,8 +319,8 @@ opencode-captain is fully backward compatible:
 
 **New capabilities:**
 - Rules for silent constraint injection
-- Unified architecture for future features
-- Better organized codebase
+- Crew for custom agent definitions
+- Unified architecture
 
 ---
 
