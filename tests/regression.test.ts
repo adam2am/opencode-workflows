@@ -197,4 +197,177 @@ describe('Bug Fixes Regression Tests', () => {
     });
   });
 
+  describe('Bug 7: Nested expansion ignores workflowInWorkflow:false', () => {
+    test('DEBUG: Check if inline code mentions get expanded', () => {
+      const { processMessageText } = require('../src/engine');
+      
+      const parentWorkflow = {
+        name: 'patchlog',
+        aliases: [],
+        tags: [],
+        agents: [],
+        description: 'Patchlog',
+        autoworkflow: 'false',
+        workflowInWorkflow: 'false', // Should NOT expand nested
+        content: 'Example: `//5-approaches` suggests the workflow',
+        source: 'global',
+        path: '/mock/patchlog.md'
+      };
+
+      const nestedWorkflow = {
+        name: '5-approaches',
+        aliases: [],
+        tags: [],
+        agents: [],
+        description: '5 approaches',
+        autoworkflow: 'false',
+        workflowInWorkflow: 'false',
+        content: '# 5 Approaches Content',
+        source: 'global',
+        path: '/mock/5-approaches.md'
+      };
+
+      const workflows = new Map();
+      workflows.set('patchlog', parentWorkflow);
+      workflows.set('5-approaches', nestedWorkflow);
+
+      const config = { deduplicateSameMessage: true, maxNestingDepth: 3 };
+
+      const result = processMessageText(
+        '//patchlog',
+        workflows,
+        new Map(),
+        'msg-test-debug',
+        {},
+        config
+      );
+
+      console.log('=== DEBUG BUG 7 ===');
+      console.log('Result text:', result.text);
+      console.log('Found:', result.found);
+      console.log('=== END DEBUG ===');
+
+      // 5-approaches should NOT be in found list since workflowInWorkflow is false
+      expect(result.found).not.toContain('5-approaches');
+      // The //5-approaches should remain as literal text
+      expect(result.text).toContain('`//5-approaches`');
+      expect(result.text).not.toContain('<workflow name="5-approaches"');
+    });
+  });
+
+  describe('Bug 7b: workflowInWorkflow default behavior', () => {
+    test('nested workflows should NOT expand when workflowInWorkflow is false (default)', () => {
+      // Import processMessageText
+      const { processMessageText } = require('../src/engine');
+      const { Workflow, WorkflowConfig } = require('../src/types');
+      
+      const parentWorkflow = {
+        name: 'parent-wf',
+        aliases: [],
+        tags: [],
+        agents: [],
+        description: 'Parent workflow',
+        autoworkflow: 'false',
+        workflowInWorkflow: 'false', // Explicitly false
+        content: 'Check out //nested-wf for more',
+        source: 'global',
+        path: '/mock/parent.md'
+      };
+
+      const nestedWorkflow = {
+        name: 'nested-wf',
+        aliases: [],
+        tags: [],
+        agents: [],
+        description: 'Nested workflow',
+        autoworkflow: 'false',
+        workflowInWorkflow: 'false',
+        content: '# Nested Content',
+        source: 'global',
+        path: '/mock/nested.md'
+      };
+
+      const workflows = new Map();
+      workflows.set('parent-wf', parentWorkflow);
+      workflows.set('nested-wf', nestedWorkflow);
+
+      const config = { deduplicateSameMessage: true, maxNestingDepth: 3 };
+
+      const result = processMessageText(
+        '//parent-wf',
+        workflows,
+        new Map(),
+        'msg-test-123',
+        {},
+        config
+      );
+
+      // Parent should expand
+      expect(result.text).toContain('<workflow name="parent-wf"');
+      
+      // BUT nested-wf should NOT expand - it should remain as //nested-wf in content
+      expect(result.text).not.toContain('<workflow name="nested-wf"');
+      expect(result.text).toContain('//nested-wf');
+      
+      // Only parent should be in found list
+      expect(result.found).toContain('parent-wf');
+      expect(result.found).not.toContain('nested-wf');
+    });
+
+    test('nested workflows SHOULD expand when workflowInWorkflow is true', () => {
+      const { processMessageText } = require('../src/engine');
+      
+      const parentWorkflow = {
+        name: 'parent-wf',
+        aliases: [],
+        tags: [],
+        agents: [],
+        description: 'Parent workflow',
+        autoworkflow: 'false',
+        workflowInWorkflow: 'true', // ENABLED
+        content: 'Check out //nested-wf for more',
+        source: 'global',
+        path: '/mock/parent.md'
+      };
+
+      const nestedWorkflow = {
+        name: 'nested-wf',
+        aliases: [],
+        tags: [],
+        agents: [],
+        description: 'Nested workflow',
+        autoworkflow: 'false',
+        workflowInWorkflow: 'false',
+        content: '# Nested Content',
+        source: 'global',
+        path: '/mock/nested.md'
+      };
+
+      const workflows = new Map();
+      workflows.set('parent-wf', parentWorkflow);
+      workflows.set('nested-wf', nestedWorkflow);
+
+      const config = { deduplicateSameMessage: true, maxNestingDepth: 3 };
+
+      const result = processMessageText(
+        '//parent-wf',
+        workflows,
+        new Map(),
+        'msg-test-456',
+        {},
+        config
+      );
+
+      // Parent should expand
+      expect(result.text).toContain('<workflow name="parent-wf"');
+      
+      // Nested SHOULD also expand
+      expect(result.text).toContain('<workflow name="nested-wf"');
+      
+      // Both should be in found list
+      expect(result.found).toContain('parent-wf');
+      expect(result.found).toContain('nested-wf');
+    });
+  });
+
 });

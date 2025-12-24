@@ -45,6 +45,7 @@ export interface WorkflowRef {
 export interface AutoWorkflowMatchResult {
   autoApply: string[];
   userHints: string[];
+  matchedKeywords: Map<string, string[]>;
 }
 
 export interface ExpansionResult {

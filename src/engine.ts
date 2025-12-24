@@ -12,6 +12,7 @@ import type {
   NestedExpansionResult,
   ExpansionResult
 } from './types';
+import { MarkdownAwareTokenizer } from './tokenizer';
 
 export type { TagOrGroup, TagEntry, AutoworkflowMode, WorkflowInWorkflowMode, ParsedFrontmatter, VariableResolver, AutoWorkflowMatchResult };
 
@@ -82,24 +83,7 @@ export function parseWorkflowArgs(argsString: string | undefined): Record<string
 }
 
 export function detectWorkflowMentions(text: string): WorkflowMention[] {
-  const matches: WorkflowMention[] = [];
-  const seen = new Set<string>();
-  let match: RegExpExecArray | null;
-  
-  WORKFLOW_MENTION_PATTERN.lastIndex = 0;
-
-  while ((match = WORKFLOW_MENTION_PATTERN.exec(text)) !== null) {
-    const name = match[1];
-    const argsString = match[2];
-    const force = match[3] === '!';
-    
-    if (!seen.has(name)) {
-      seen.add(name);
-      matches.push({ name, force, args: parseWorkflowArgs(argsString) });
-    }
-  }
-  
-  return matches;
+  return MarkdownAwareTokenizer.tokenize(text);
 }
 
 export function parseArrayField(yaml: string, fieldName: string): string[] {
@@ -319,8 +303,10 @@ export function findMatchingAutoWorkflows(
   activeAgent?: string,
   explicitlyMentioned: string[] = []
 ): AutoWorkflowMatchResult {
+  const matchedKeywords = new Map<string, string[]>();
+  
   if (/\/\/\s+[\w-]/.test(userContent)) {
-    return { autoApply: [], userHints: [] };
+    return { autoApply: [], userHints: [], matchedKeywords };
   }
 
   const detectedRefs = extractWorkflowReferences(userContent);
@@ -335,43 +321,63 @@ export function findMatchingAutoWorkflows(
     .replace(/use_workflow:\S+/g, '')
     .toLowerCase();
 
-  const matchingWorkflows = workflows
-    .filter(w => w.autoworkflow === 'true' || w.autoworkflow === 'hintForUser')
-    .filter(w => w.agents.length === 0 || (activeAgent && w.agents.includes(activeAgent)))
-    .filter(w => {
-      if (allExplicit.has(w.name.toLowerCase())) return false;
-      if (w.aliases.some(a => allExplicit.has(a.toLowerCase()))) return false;
+  const matchingWorkflows: Workflow[] = [];
 
-      let singleMatches = 0;
-      let groupMatched = false;
-      
-      for (const tag of w.tags) {
-        if (Array.isArray(tag)) {
-          const allInGroup = tag.every(t => matchesTagItem(t, contentForMatching));
-          if (allInGroup && tag.length > 0) {
-            groupMatched = true;
+  for (const w of workflows) {
+    if (w.autoworkflow !== 'true' && w.autoworkflow !== 'hintForUser') continue;
+    if (w.agents.length > 0 && (!activeAgent || !w.agents.includes(activeAgent))) continue;
+    if (allExplicit.has(w.name.toLowerCase())) continue;
+    if (w.aliases.some(a => allExplicit.has(a.toLowerCase()))) continue;
+
+    const keywords: string[] = [];
+    let singleMatches = 0;
+    let groupMatched = false;
+    
+    for (const tag of w.tags) {
+      if (Array.isArray(tag)) {
+        const groupKeywords: string[] = [];
+        const allInGroup = tag.every(t => {
+          const matched = matchesTagItem(t, contentForMatching);
+          if (matched) {
+            const keyword = typeof t === 'string' ? t : (t as TagOrGroup).or.find(o => contentForMatching.includes(o.toLowerCase())) || '';
+            if (keyword) groupKeywords.push(keyword);
           }
-        } else if (isOrGroup(tag)) {
-          if (tag.or.some(t => contentForMatching.includes(t.toLowerCase()))) {
+          return matched;
+        });
+        if (allInGroup && tag.length > 0) {
+          groupMatched = true;
+          keywords.push(...groupKeywords);
+        }
+      } else if (isOrGroup(tag)) {
+        const matched = tag.or.find(t => contentForMatching.includes(t.toLowerCase()));
+        if (matched) {
+          singleMatches++;
+          keywords.push(matched);
+        }
+      } else if (typeof tag === 'string') {
+        if (tag.includes('|')) {
+          const parts = tag.split('|').map(s => s.trim());
+          const matched = parts.find(part => contentForMatching.includes(part.toLowerCase()));
+          if (matched) {
             singleMatches++;
+            keywords.push(matched);
           }
-        } else if (typeof tag === 'string') {
-          if (tag.includes('|')) {
-            const parts = tag.split('|').map(s => s.trim().toLowerCase());
-            if (parts.some(part => contentForMatching.includes(part))) {
-              singleMatches++;
-            }
-          } else if (contentForMatching.includes(tag.toLowerCase())) {
-            singleMatches++;
-          }
+        } else if (contentForMatching.includes(tag.toLowerCase())) {
+          singleMatches++;
+          keywords.push(tag);
         }
       }
-      
-      const matchesDesc = w.description && contentForMatching.includes(w.description.toLowerCase().slice(0, 20));
-      
-      return groupMatched || singleMatches >= 2 || matchesDesc;
-    })
-    .filter((w, idx, arr) => arr.findIndex(x => x.name === w.name) === idx);
+    }
+    
+    const matchesDesc = w.description && contentForMatching.includes(w.description.toLowerCase().slice(0, 20));
+    
+    if (groupMatched || singleMatches >= 2 || matchesDesc) {
+      if (!matchingWorkflows.some(x => x.name === w.name)) {
+        matchingWorkflows.push(w);
+        matchedKeywords.set(w.name, keywords);
+      }
+    }
+  }
 
   const autoApply = matchingWorkflows
     .filter(w => w.autoworkflow === 'true')
@@ -381,7 +387,7 @@ export function findMatchingAutoWorkflows(
     .filter(w => w.autoworkflow === 'hintForUser')
     .map(w => w.name);
 
-  return { autoApply, userHints };
+  return { autoApply, userHints, matchedKeywords };
 }
 
 export function extractWorkflowReferences(text: string): string[] {
@@ -423,7 +429,30 @@ export function shortId(messageID: string, salt: string = '', expansionChain: st
   return hash.toString(36);
 }
 
-export function formatAutoApplyHint(workflowNames: string[], descriptions: Map<string, string>): string {
+export function formatAutoApplyHint(
+  workflowNames: string[],
+  workflows: Map<string, Workflow>,
+  matchedKeywords: Map<string, string[]>
+): string {
+  const singular = workflowNames.length === 1;
+  const header = singular ? `⚡ Workflow matched.` : `⚡ Workflows matched.`;
+
+  const items = workflowNames.map(name => {
+    const w = workflows.get(name);
+    const desc = w?.description || 'No description';
+    const triggers = matchedKeywords.get(name) || [];
+    const triggerHint = triggers.length > 0 
+      ? ` (matched: ${triggers.slice(0, 3).map(t => `"${t}"`).join(', ')})`
+      : '';
+    return `↳ //\u200B${name}${triggerHint}\n↳ Desc: "${desc}"`;
+  });
+
+  return `${header}
+ACTION_REQUIRED: IF matches user intent → get_workflow("name"), else SKIP
+${items.join('\n\n')}`;
+}
+
+export function formatAutoApplyHintLegacy(workflowNames: string[], descriptions: Map<string, string>): string {
   const items = workflowNames.map(name => {
     const desc = descriptions.get(name) || 'No description';
     return `//\u200B${name} — "${desc}"`;

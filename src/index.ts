@@ -60,9 +60,27 @@ const DISTINCTION_RULE = `
 **WORKFLOW XML HANDLING** (READ THIS, IT'S IMPORTANT):
 1. **\`<workflow name="X">\` IN MESSAGE**: The content is RIGHT THERE. Read it. Follow it. Execute it. Do NOT call \`get_workflow\` — that's stupid, the content is already in front of you.
 2. **\`[use_workflow:X-id]\` WITHOUT XML**: Orphan reference. Use \`get_workflow\` to retrieve it.
-3. **\`[Auto-apply workflows: //X, //Y]\` HINT**: System detected relevant workflows based on your message. Check the \`<workflow-catalog>\` descriptions. If ANY workflow matches what user actually wants → fetch it with \`get_workflow\` and apply it. No asking. No suggesting. Just do it.
+3. **\`⚡ Workflow matched\` HINT**: System detected relevant workflows. FOR EACH, ask yourself:
+   - "Does this workflow's description match what the user actually wants?"
+   - "If I DON'T fetch this, will the user wonder why I ignored their relevant workflow?"
+   - If yes → call \`get_workflow("name")\` and apply it. No asking. No suggesting. Just do it.
+   - If no → Skip silently.
+   - If unsure → Fetch (bias toward action).
+   - Time limit: 3 seconds per decision. Don't overthink.
 4. **\`[Suggested workflows: //X]\` HINT**: Show this suggestion to the user. Do NOT auto-apply. Let user decide.
 5. **User explicitly runs \`//workflow\`**: If the workflow content is NOT already in the conversation history, use \`get_workflow\` to fetch fresh context before executing.
+
+**WHEN MULTIPLE WORKFLOWS MATCH**:
+1. Is there ONE obvious match? → Fetch only that one
+2. Are there TWO complementary matches? → Fetch both
+3. Are there THREE+ matches? → Fetch top 2 by relevance, mention others
+4. Are ALL matches weak? → Mention to user, don't auto-fetch
+
+**ANTI-PATTERN — DO NOT DO THIS**:
+User: "validate the changes"
+Hint: ⚡ Workflow matched... //inspect
+Assistant: *runs tests manually without calling get_workflow("inspect")*
+THIS IS WRONG. The workflow EXISTS for this purpose. USE IT.
 
 **CREATING WORKFLOWS**: When user asks to create a workflow, use the \`create_workflow\` tool. NEVER manually create .md files.
 </system-rule>
@@ -191,7 +209,7 @@ export const WorkflowsPlugin: Plugin = async (ctx: PluginInput) => {
               const activeAgent = _input.agent;
               const alreadyReferenced = extractWorkflowReferences(textPart.text);
 
-              const { autoApply, userHints } = findMatchingAutoWorkflows(
+              const { autoApply, userHints, matchedKeywords } = findMatchingAutoWorkflows(
                 textPart.text,
                 [...workflows.values()],
                 activeAgent,
@@ -199,11 +217,7 @@ export const WorkflowsPlugin: Plugin = async (ctx: PluginInput) => {
               );
 
               if (autoApply.length > 0) {
-                const descriptions = new Map(autoApply.map(name => {
-                  const w = workflows.get(name);
-                  return [name, w?.description || 'No description'] as [string, string];
-                }));
-                textPart.text += `\n\n${formatAutoApplyHint(autoApply, descriptions)}`;
+                textPart.text += `\n\n${formatAutoApplyHint(autoApply, workflows, matchedKeywords)}`;
                 processedAutoApply.add(messageID);
               }
               if (userHints.length > 0) {

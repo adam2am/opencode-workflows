@@ -1,5 +1,20 @@
 # Patchlog
 
+## [1.4.0] - 2025-12-24
+
+### Added
+- Auto-apply hints now show which words from your message triggered the match (e.g., `matched: "validate", "changes"`)
+- Context-aware tokenizer prevents workflow mentions inside code blocks from being expanded
+- Structured debug logging (enable with `WORKFLOW_DEBUG=1`)
+
+### Fixed
+- Nested workflow expansion now properly respects `workflowInWorkflow: false` setting
+- Workflows inside `<workflow>` tags no longer get re-expanded on subsequent passes
+
+### Changed
+- Auto-apply hint format improved with clearer action guidance for AI
+
+
 ## [1.3.1] - 2025-12-24
 
 ### Fixed

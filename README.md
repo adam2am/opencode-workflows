@@ -29,6 +29,8 @@ The plugin automatically:
 | Numbers | `//5-approaches` | Yes |
 | Underscores | `//my_workflow` | Yes |
 | CamelCase | `//MyWorkflow` | Yes |
+| Unicode | `//проверка-кода` | Yes |
+| Unicode | `//代码审查` | Yes |
 | **Spaces** | `//my workflow` | **No** - stops at space |
 
 **Important**: Spaces break the tag. `//5 approaches` captures only `//5`.
@@ -60,14 +62,17 @@ And you type: "Can you check this code for security issues?"
 
 The plugin detects the matching tags and appends:
 ```
-[Auto-apply workflows: //security-audit]
+⚡ Workflow matched.
+ACTION_REQUIRED: IF matches user intent → get_workflow("name"), else SKIP
+↳ //security-audit (matched: "security", "check")
+↳ Desc: "Security audit using OWASP Top 10"
 ```
 
 The AI will automatically fetch and apply the workflow.
 
 For `autoworkflow: hintForUser`, the hint appears as:
 ```
-[Suggested workflows: //security-audit]
+[Suggested workflows: //security-audit — "Security audit using OWASP Top 10"]
 ```
 
 And the AI will suggest it to you without auto-applying.
@@ -149,6 +154,7 @@ Then do this...
 | `shortcuts` / `aliases` | array | Alternative names to trigger this workflow |
 | `tags` | array | Keywords for auto-suggestion matching (supports tag groups) |
 | `autoworkflow` | `true` / `hintForUser` / `false` | Auto-suggestion mode (default: `false`) |
+| `workflowInWorkflow` | `true` / `hints` / `false` | Nested workflow expansion mode (default: `false`) |
 | `agents` | array | Limit auto-suggestion to specific agents |
 
 ### Tag Groups (Smart Matching)
@@ -252,12 +258,42 @@ The plugin expands the **first** mention fully and converts subsequent mentions 
 
 This prevents context bloat while maintaining workflow availability.
 
+### Nested Workflows
+
+Workflows can reference other workflows using the same `//workflow-name` syntax.
+
+Control nested expansion with `workflowInWorkflow` in frontmatter:
+
+| Mode | YAML Value | Behavior |
+|------|------------|----------|
+| **Disabled** | `workflowInWorkflow: false` | Nested mentions stay as `//name` (default) |
+| **Enabled** | `workflowInWorkflow: true` | Nested mentions are fully expanded |
+| **Hints** | `workflowInWorkflow: hints` | Shows hint about available nested workflows |
+
+**Example:**
+```markdown
+---
+workflowInWorkflow: true
+---
+# Parent Workflow
+
+First, apply //5-approaches to analyze the problem.
+Then use //linus-torvalds review style.
+```
+
+When `workflowInWorkflow: true`, nested `//5-approaches` and `//linus-torvalds` are expanded inline.
+
+**Safety limits:**
+- Max nesting depth: 3 (configurable via `maxNestingDepth` in config)
+- Circular references are detected and prevented
+
 ### Pattern Matching
 
-The regex `(?<![:\w/])//([a-zA-Z0-9][a-zA-Z0-9_-]*)` ensures:
+The workflow mention pattern ensures:
 - URLs like `https://example.com` are ignored
 - File paths like `/usr/local//bin` are ignored  
 - Comments like `// This is a comment` are ignored (space breaks token)
+- Unicode workflow names are fully supported (Cyrillic, Chinese, etc.)
 - Only valid workflow tokens are captured
 
 ## Installation
@@ -284,7 +320,8 @@ The plugin creates a configuration file at `~/.config/opencode/workflows.json` o
 
 ```json
 {
-  "deduplicateSameMessage": true
+  "deduplicateSameMessage": true,
+  "maxNestingDepth": 3
 }
 ```
 
@@ -293,6 +330,7 @@ The plugin creates a configuration file at `~/.config/opencode/workflows.json` o
 | Option | Default | Description |
 |--------|---------|-------------|
 | `deduplicateSameMessage` | `true` | When enabled, repeated workflow mentions in the same message become references (`[use_workflow:...]`) instead of full expansions. Set to `false` to always expand all mentions. |
+| `maxNestingDepth` | `3` | Maximum depth for nested workflow expansion. Prevents runaway recursion. |
 
 ## License
 
