@@ -1,5 +1,16 @@
 # Patchlog
 
+## [1.0.2] - 2025-12-24
+
+### Fixed
+- Corrupted workflow hints now auto-recover - if user edits and breaks a hint, it's stripped and regenerated
+- Idempotent message processing - multiple passes produce consistent output
+
+### Added
+- `sanitizeUserMessage()` - strips corrupted hints + highlight brackets before re-processing
+- 24 new tests covering hint corruption scenarios
+
+
 ## [1.0.1] - 2025-12-24
 
 ### Added
