@@ -1,5 +1,16 @@
 # Patchlog
 
+## [1.4.2] - 2025-12-24
+
+### Changed
+- System prompt injection now uses `chat.params` hook as primary method (matching opencode-elf pattern)
+- `experimental.chat.system.transform` kept as fallback for older OpenCode versions
+
+### Refactored
+- Extracted `buildWorkflowSystemPrompt()` helper to consolidate system prompt generation logic
+- Reduced code duplication between hooks
+
+
 ## [1.4.1] - 2025-12-24
 
 ### Added
