@@ -103,6 +103,39 @@ async function showToast(
   } catch {}
 }
 
+function buildWorkflowSystemPrompt(workflows: Map<string, Workflow>, activeAgent?: string): string {
+  const parts: string[] = [DISTINCTION_RULE];
+
+  const catalogEntries = [...workflows.values()]
+    .filter(w => w.autoworkflow === 'true' || w.autoworkflow === 'hintForUser')
+    .filter(w => w.agents.length === 0 || (activeAgent && w.agents.includes(activeAgent)))
+    .filter((w, idx, arr) => arr.findIndex(x => x.name === w.name) === idx)
+    .map(w => {
+      const tagsStr = w.tags.length > 0 ? ` [${w.tags.join(', ')}]` : '';
+      const aliasStr = w.aliases.length > 0 ? ` (aliases: ${w.aliases.join(', ')})` : '';
+      const modeStr = w.autoworkflow === 'hintForUser' ? ' {user-decides}' : '';
+      return `//${w.name}${aliasStr}: ${w.description || 'No description'}${tagsStr}${modeStr}`;
+    });
+
+  if (catalogEntries.length > 0) {
+    parts.push(
+      `\n<workflow-catalog description="Available auto-workflows with their descriptions. Use these to decide relevance.">\n${catalogEntries.join('\n')}\n</workflow-catalog>\n\n` +
+      `<auto-workflow-behavior>\n` +
+      `When you see [Auto-apply workflows: //X — "description" — if relevant, use get_workflow("name") to fetch and apply]:\n` +
+      `1. The description is RIGHT THERE in the hint — read it\n` +
+      `2. If description matches user's intent → call get_workflow("X") and APPLY it\n` +
+      `3. No asking permission. No "would you like me to...". Just fetch and execute.\n` +
+      `4. If description does NOT match intent → ignore, proceed normally\n` +
+      `\n` +
+      `When you see [Suggested workflows: //X — "description"]:\n` +
+      `- These are {user-decides} workflows. Show the suggestion to the user, do NOT auto-apply.\n` +
+      `</auto-workflow-behavior>`
+    );
+  }
+
+  return parts.join('\n');
+}
+
 export const WorkflowsPlugin: Plugin = async (ctx: PluginInput) => {
   const { directory } = ctx;
   let workflows = loadWorkflows(directory);
@@ -121,45 +154,40 @@ export const WorkflowsPlugin: Plugin = async (ctx: PluginInput) => {
   };
 
   return {
+    // PRIMARY: chat.params hook - appends to systemPrompt like opencode-elf
+    "chat.params": async (params: Record<string, unknown>) => {
+      try {
+        workflows = loadWorkflows(directory);
+        
+        const input = params.input as Record<string, unknown> | undefined;
+        if (!input) return;
+
+        const activeAgent = input.agent as string | undefined;
+        const workflowSystemContent = buildWorkflowSystemPrompt(workflows, activeAgent);
+        
+        const existingSystemPrompt = input.systemPrompt as string | undefined;
+        if (existingSystemPrompt?.includes("DISTINCTION RULE")) return;
+
+        if (existingSystemPrompt) {
+          input.systemPrompt = `${existingSystemPrompt}\n\n${workflowSystemContent}`;
+        } else {
+          input.systemPrompt = workflowSystemContent;
+        }
+      } catch (error) {
+        console.error("Workflows: Error in chat.params hook", error);
+      }
+    },
+
+    // FALLBACK: experimental.chat.system.transform for older OpenCode versions
     "experimental.chat.system.transform": async (
       input: { agent?: string },
       output: { system: string[] }
     ) => {
       const hasRule = output.system.some(s => s.includes("DISTINCTION RULE"));
-      if (!hasRule) {
-        output.system.push(DISTINCTION_RULE);
-      }
+      if (hasRule) return;
 
-      const hasCatalog = output.system.some(s => s.includes("<workflow-catalog"));
-      if (hasCatalog) return;
-
-      const activeAgent = input.agent;
-      const catalogEntries = [...workflows.values()]
-        .filter(w => w.autoworkflow === 'true' || w.autoworkflow === 'hintForUser')
-        .filter(w => w.agents.length === 0 || (activeAgent && w.agents.includes(activeAgent)))
-        .filter((w, idx, arr) => arr.findIndex(x => x.name === w.name) === idx)
-        .map(w => {
-          const tagsStr = w.tags.length > 0 ? ` [${w.tags.join(', ')}]` : '';
-          const aliasStr = w.aliases.length > 0 ? ` (aliases: ${w.aliases.join(', ')})` : '';
-          const modeStr = w.autoworkflow === 'hintForUser' ? ' {user-decides}' : '';
-          return `//${w.name}${aliasStr}: ${w.description || 'No description'}${tagsStr}${modeStr}`;
-        });
-
-      if (catalogEntries.length > 0) {
-        output.system.push(
-          `<workflow-catalog description="Available auto-workflows with their descriptions. Use these to decide relevance.">\n${catalogEntries.join('\n')}\n</workflow-catalog>\n\n` +
-          `<auto-workflow-behavior>\n` +
-          `When you see [Auto-apply workflows: //X — "description" — if relevant, use get_workflow("name") to fetch and apply]:\n` +
-          `1. The description is RIGHT THERE in the hint — read it\n` +
-          `2. If description matches user's intent → call get_workflow("X") and APPLY it\n` +
-          `3. No asking permission. No "would you like me to...". Just fetch and execute.\n` +
-          `4. If description does NOT match intent → ignore, proceed normally\n` +
-          `\n` +
-          `When you see [Suggested workflows: //X — "description"]:\n` +
-          `- These are {user-decides} workflows. Show the suggestion to the user, do NOT auto-apply.\n` +
-          `</auto-workflow-behavior>`
-        );
-      }
+      const workflowSystemContent = buildWorkflowSystemPrompt(workflows, input.agent);
+      output.system.push(workflowSystemContent);
     },
 
     // Transform user message parts to expand //workflow mentions
