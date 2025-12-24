@@ -1105,12 +1105,12 @@ describe('formatAutoApplyHint', () => {
     description,
   });
 
-  test('wraps output in brackets', () => {
+  test('wraps header in brackets', () => {
     const orders = new Map([['test', mockOrder('test', 'Test desc')]]);
     const keywords = new Map([['test', ['keyword1']]]);
     const result = formatAutoApplyHint(['test'], orders, keywords);
-    expect(result.startsWith('[')).toBe(true);
-    expect(result.endsWith(']')).toBe(true);
+    expect(result.startsWith('[⚡')).toBe(true);
+    expect(result).toContain('matched]');
   });
 
   test('uses regular space instead of zero-width space', () => {
@@ -1118,7 +1118,7 @@ describe('formatAutoApplyHint', () => {
     const keywords = new Map([['test', ['keyword1']]]);
     const result = formatAutoApplyHint(['test'], orders, keywords);
     expect(result).not.toContain('\u200B');
-    expect(result).toContain('// test');
+    expect(result).toContain('//[test]');
   });
 
   test('singular header for one workflow (standard theme)', () => {

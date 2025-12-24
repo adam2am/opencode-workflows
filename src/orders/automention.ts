@@ -108,6 +108,34 @@ export function findMatchingAutoOrders(
   return { autoApply, expandedApply, matchedKeywords };
 }
 
+
+/**
+ * Wraps matched trigger words in brackets for visual highlighting.
+ * Adjacent keywords are merged into single brackets.
+ * 
+ * @example
+ * highlightMatchedWords("5 approaches to solve", ["5", "approaches"])
+ * // => "[5 approaches] to solve"
+ * 
+ * highlightMatchedWords("I have 5 different approaches", ["5", "approaches"])
+ * // => "I have [5] different [approaches]"
+ */
+export function highlightMatchedWords(text: string, keywords: string[]): string {
+  if (!keywords.length) return text;
+  
+  let result = text;
+  for (const kw of keywords) {
+    const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`\\b(${escaped})\\b`, 'gi');
+    result = result.replace(regex, '[$1]');
+  }
+  
+  // Merge adjacent brackets: "][" or "] [" → " " (combine into one bracket)
+  result = result.replace(/\]\s*\[/g, ' ');
+  
+  return result;
+}
+
 export function findSpawnOrders(
   orders: Order[],
   activeAgent: string
@@ -153,12 +181,12 @@ export function formatAutoApplyHint(
     const triggerHint = triggers.length > 0 
       ? ` (matched: ${triggers.slice(0, 3).map(t => `"${t}"`).join(', ')})`
       : '';
-    return `↳ // ${name}${triggerHint}\n↳ Desc: "${desc}"`;
+    return `↳ //[${name}]${triggerHint}\n↳ Desc: "${desc}"`;
   });
 
-  return `[${header}
+  return `[${header}]
 ACTION_REQUIRED: IF matches user intent → get_workflow("name"), else SKIP
-${items.join('\n\n')}]`;
+${items.join('\n\n')}`;
 }
 
 export function formatUserHint(

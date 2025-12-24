@@ -17,6 +17,8 @@ import {
   isOrGroup,
   shortId,
   showToast,
+  log,
+  clearLog,
 } from './core';
 import type { VariableResolver, CaptainConfig, TagEntry, PluginEvent } from './core';
 
@@ -27,6 +29,7 @@ import {
   extractOrderReferences,
   formatAutoApplyHint,
   formatSuggestion,
+  highlightMatchedWords,
   processMessageText,
   expandOrderMentions,
   findMatchingAutoOrders,
@@ -307,6 +310,18 @@ export const WorkflowsPlugin: Plugin = async (ctx: PluginInput) => {
                 activeAgent,
                 alreadyReferenced
               );
+
+              log('logHighlight', 'autoApply:', autoApply, 'expandedApply:', expandedApply);
+              log('logHighlight', 'matchedKeywords:', [...matchedKeywords.entries()]);
+
+              const allKeywords = [...matchedKeywords.values()].flat();
+              log('logHighlight', 'allKeywords:', allKeywords);
+              log('logHighlight', 'textPart.text BEFORE:', textPart.text);
+              
+              if (allKeywords.length > 0) {
+                textPart.text = highlightMatchedWords(textPart.text, allKeywords);
+                log('logHighlight', 'textPart.text AFTER:', textPart.text);
+              }
 
               if (autoApply.length > 0) {
                 textPart.text += `\n\n${formatAutoApplyHint(autoApply, workflows, matchedKeywords)}`;

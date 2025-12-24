@@ -5,3 +5,5 @@ export * from './variables';
 export * from './utils';
 export * from './storage';
 export * from './config';
+export * from './debug-config';
+export * from './logger';
