@@ -1,6 +1,6 @@
 import type { TagOrGroup, Theme } from '../core/types';
 import type { Order } from './types';
-import { isOrGroup, matchesTagItem } from '../core/matcher';
+import { isOrGroup, matchesTagItem, isSequenceTag, matchesSequenceTag, hasSequenceSyntax, parseSequenceTag } from '../core/matcher';
 import { extractOrderReferences } from './engine';
 import { getMessage } from '../core/config';
 
@@ -52,7 +52,20 @@ export function findMatchingAutoOrders(
     let groupMatched = false;
     
     for (const tag of w.tags) {
-      if (Array.isArray(tag)) {
+      if (isSequenceTag(tag)) {
+        const result = matchesSequenceTag(tag, contentForMatching);
+        if (result.matches) {
+          groupMatched = true;
+          keywords.push(...result.keywords);
+        }
+      } else if (typeof tag === 'string' && hasSequenceSyntax(tag)) {
+        const seqTag = parseSequenceTag(tag);
+        const result = matchesSequenceTag(seqTag, contentForMatching);
+        if (result.matches) {
+          groupMatched = true;
+          keywords.push(...result.keywords);
+        }
+      } else if (Array.isArray(tag)) {
         const groupKeywords: string[] = [];
         const allInGroup = tag.every(t => {
           const matched = matchesTagItem(t, contentForMatching);
@@ -147,12 +160,16 @@ export function highlightMatchedWords(text: string, keywords: string[]): string 
  */
 export function stripExistingHints(text: string): string {
   const HINT_FINGERPRINTS = [
-    /\[⚡/,                          // header (any corruption level)
-    /^ACTION_REQUIRED:\s*IF/i,       // our exact phrase
-    /↳\s*\[\/\//,                    // new format: ↳ [//name]
-    /↳\s*\/\/\[/,                    // old format: ↳ //[name]  
-    /↳\s*Desc:\s*[`"]/,              // ↳ Desc: `...` or ↳ Desc: "..."
-    /\(matched:\s*"/,                // (matched: "x", "y")
+    /\[Important\. Workflow Detected\]/i, // current header format
+    /\[Workflow Detected\]/i,             // legacy header format
+    /\[⚡/,                                // legacy emoji header
+    /^ACTION_REQUIRED:\s*IF/i,            // our exact phrase
+    /↳\s*`\/\//,                          // new format: ↳ `//name`
+    /↳\s*\[\/\//,                         // old format: ↳ [//name]
+    /↳\s*\/\/\[/,                         // legacy format: ↳ //[name]  
+    /↳\s*Fetch:\s*[`"]/,                  // ↳ Fetch: `...` or ↳ Fetch: "..."
+    /↳\s*Desc:\s*[`"]/,                   // legacy: ↳ Desc: `...`
+    /\(matched:\s*"/,                     // (matched: "x", "y")
   ];
 
   return text
@@ -236,7 +253,7 @@ export function formatAutoApplyHint(
     const triggerHint = triggers.length > 0 
       ? ` (matched: ${triggers.slice(0, 3).map(t => `"${t}"`).join(', ')})`
       : '';
-    return `↳ [// ${name}]${triggerHint}\n↳ Desc: \`${desc}\``;
+    return `↳ \`// ${name}\`${triggerHint}\n↳ Fetch: \`${desc}\``;
   });
 
   return `[${header}]

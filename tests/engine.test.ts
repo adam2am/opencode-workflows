@@ -1151,8 +1151,7 @@ describe('formatAutoApplyHint', () => {
     const orders = new Map([['test', mockOrder('test', 'Test desc')]]);
     const keywords = new Map([['test', ['keyword1']]]);
     const result = formatAutoApplyHint(['test'], orders, keywords);
-    expect(result.startsWith('[⚡')).toBe(true);
-    expect(result).toContain('matched]');
+    expect(result.startsWith('[Important. Workflow Detected]')).toBe(true);
   });
 
   test('uses regular space instead of zero-width space', () => {
@@ -1160,14 +1159,14 @@ describe('formatAutoApplyHint', () => {
     const keywords = new Map([['test', ['keyword1']]]);
     const result = formatAutoApplyHint(['test'], orders, keywords);
     expect(result).not.toContain('\u200B');
-    expect(result).toContain('[// test]');
+    expect(result).toContain('`// test`');
   });
 
   test('singular header for one workflow (standard theme)', () => {
     const orders = new Map([['test', mockOrder('test', 'Test desc')]]);
     const keywords = new Map<string, string[]>();
     const result = formatAutoApplyHint(['test'], orders, keywords, 'standard');
-    expect(result).toContain('⚡ Workflow matched');
+    expect(result).toContain('Workflow Detected');
   });
 
   test('plural header for multiple workflows (standard theme)', () => {
@@ -1177,7 +1176,7 @@ describe('formatAutoApplyHint', () => {
     ]);
     const keywords = new Map<string, string[]>();
     const result = formatAutoApplyHint(['test1', 'test2'], orders, keywords, 'standard');
-    expect(result).toContain('⚡ Workflow matched');
+    expect(result).toContain('Workflow Detected');
   });
 
   test('includes matched keywords', () => {
@@ -1201,6 +1200,100 @@ describe('formatUserHint', () => {
     const result = formatUserHint(['audit'], descriptions);
     expect(result).toContain('[Suggested workflows:');
     expect(result).toContain('// audit');
+  });
+});
+
+describe('Sequence Tag Parsing and Matching', () => {
+  const { parseSequenceTag, matchesSequenceTag, hasSequenceSyntax } = require('../src/core/matcher');
+
+  describe('hasSequenceSyntax', () => {
+    test('returns true for string with ->', () => {
+      expect(hasSequenceSyntax('follow->instruction')).toBe(true);
+    });
+
+    test('returns false for string without ->', () => {
+      expect(hasSequenceSyntax('follow instruction')).toBe(false);
+    });
+  });
+
+  describe('parseSequenceTag', () => {
+    test('parses simple two-word sequence', () => {
+      const result = parseSequenceTag('follow->instruction');
+      expect(result.sequence).toHaveLength(2);
+      expect(result.sequence[0]).toEqual({ type: 'word', values: ['follow'] });
+      expect(result.sequence[1]).toEqual({ type: 'word', values: ['instruction'] });
+    });
+
+    test('parses OR group before word', () => {
+      const result = parseSequenceTag('(follow|execute|do)->instruction');
+      expect(result.sequence).toHaveLength(2);
+      expect(result.sequence[0]).toEqual({ type: 'or', values: ['follow', 'execute', 'do'] });
+      expect(result.sequence[1]).toEqual({ type: 'word', values: ['instruction'] });
+    });
+
+    test('parses word before AND group', () => {
+      const result = parseSequenceTag('inspect->[changes,staged]');
+      expect(result.sequence).toHaveLength(2);
+      expect(result.sequence[0]).toEqual({ type: 'word', values: ['inspect'] });
+      expect(result.sequence[1]).toEqual({ type: 'and', values: ['changes', 'staged'] });
+    });
+
+    test('parses chained sequence', () => {
+      const result = parseSequenceTag('think->5->approaches');
+      expect(result.sequence).toHaveLength(3);
+      expect(result.sequence[0]).toEqual({ type: 'word', values: ['think'] });
+      expect(result.sequence[1]).toEqual({ type: 'word', values: ['5'] });
+      expect(result.sequence[2]).toEqual({ type: 'word', values: ['approaches'] });
+    });
+  });
+
+  describe('matchesSequenceTag', () => {
+    test('matches simple sequence in correct order', () => {
+      const seq = parseSequenceTag('follow->instruction');
+      const result = matchesSequenceTag(seq, 'please follow my instruction');
+      expect(result.matches).toBe(true);
+      expect(result.keywords).toContain('follow');
+      expect(result.keywords).toContain('instruction');
+    });
+
+    test('does NOT match sequence in wrong order', () => {
+      const seq = parseSequenceTag('follow->instruction');
+      const result = matchesSequenceTag(seq, 'instruction to follow');
+      expect(result.matches).toBe(false);
+    });
+
+    test('matches OR group in sequence', () => {
+      const seq = parseSequenceTag('(follow|execute|do)->instruction');
+      
+      expect(matchesSequenceTag(seq, 'follow the instruction').matches).toBe(true);
+      expect(matchesSequenceTag(seq, 'execute the instruction').matches).toBe(true);
+      expect(matchesSequenceTag(seq, 'do the instruction').matches).toBe(true);
+      expect(matchesSequenceTag(seq, 'instruction to follow').matches).toBe(false);
+    });
+
+    test('matches AND group after word', () => {
+      const seq = parseSequenceTag('inspect->[changes,staged]');
+      
+      expect(matchesSequenceTag(seq, 'inspect my staged changes').matches).toBe(true);
+      expect(matchesSequenceTag(seq, 'inspect changes that are staged').matches).toBe(true);
+      expect(matchesSequenceTag(seq, 'changes need to be inspected').matches).toBe(false);
+    });
+
+    test('matches chained sequence', () => {
+      const seq = parseSequenceTag('think->5->approaches');
+      
+      expect(matchesSequenceTag(seq, 'think about 5 approaches').matches).toBe(true);
+      expect(matchesSequenceTag(seq, 'think of 5 different approaches').matches).toBe(true);
+      expect(matchesSequenceTag(seq, '5 approaches to think about').matches).toBe(false);
+    });
+
+    test('returns matched keywords', () => {
+      const seq = parseSequenceTag('(follow|execute)->instruction');
+      const result = matchesSequenceTag(seq, 'execute the instruction');
+      expect(result.matches).toBe(true);
+      expect(result.keywords).toContain('execute');
+      expect(result.keywords).toContain('instruction');
+    });
   });
 });
 

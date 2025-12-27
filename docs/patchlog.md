@@ -1,5 +1,17 @@
 # Patchlog
 
+## [1.0.4] - 2025-12-27
+
+### Added
+- **Sequence tag DSL** - match keywords in order with `a->b` syntax (e.g., `follow->instruction` triggers only when "follow" appears before "instruction")
+- OR groups `(a|b)->c` and AND groups `a->[b,c]` in sequence tags
+- 12 new tests for sequence tag parsing and matching
+
+### Changed
+- Auto-match hint header now shows `[Important. Workflow Detected]`
+- Workflow name displayed in backticks for clarity
+
+
 ## [1.0.3] - 2025-12-27
 
 ### Added

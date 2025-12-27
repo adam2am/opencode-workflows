@@ -65,7 +65,7 @@ const MESSAGES: Record<Theme, Record<string, string>> = {
     suggested: 'Suggested orders',
   },
   standard: {
-    ordersMatched: '⚡ Workflow matched',
+    ordersMatched: 'Important. Workflow Detected',
     orderExpanded: '✓ Expanded',
     didYouMean: 'Did you mean?',
     notFound: 'Workflow not found',

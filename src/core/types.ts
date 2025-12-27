@@ -12,7 +12,16 @@ export interface TagOrGroup {
   or: string[];
 }
 
-export type TagEntry = string | (string | TagOrGroup)[] | TagOrGroup;
+export interface SequenceStep {
+  type: 'word' | 'or' | 'and';
+  values: string[];
+}
+
+export interface SequenceTag {
+  sequence: SequenceStep[];
+}
+
+export type TagEntry = string | (string | TagOrGroup)[] | TagOrGroup | SequenceTag;
 
 // ============================================================================
 // Prompt Types
