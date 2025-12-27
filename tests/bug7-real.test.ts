@@ -42,6 +42,7 @@ description: "Test workflow"
       description: 'test',
       automention: 'false',
       orderInOrder: 'false',
+      expand: true,
       content: 'suggests //5-approaches for analysis',
       source: 'global',
       path: '/test'
@@ -57,6 +58,7 @@ description: "Test workflow"
       description: 'test',
       automention: 'false',
       orderInOrder: 'false',
+      expand: true,
       content: '# 5 Approaches content',
       source: 'global',
       path: '/test'
@@ -73,7 +75,7 @@ description: "Test workflow"
       new Map(),
       'msg123',
       {},
-      { deduplicateSameMessage: true, maxNestingDepth: 3 },
+      { deduplicateSameMessage: true, maxNestingDepth: 3, expandOrders: true },
       [],
       0
     );
@@ -110,6 +112,7 @@ description: "Test workflow"
       description: 'test',
       automention: 'false',
       orderInOrder: 'false',
+      expand: true,
       content: '# Content',
       source: 'global',
       path: '/test'
@@ -126,7 +129,7 @@ description: "Test workflow"
       new Map(),
       'msg123',
       {},
-      { deduplicateSameMessage: true, maxNestingDepth: 3 },
+      { deduplicateSameMessage: true, maxNestingDepth: 3, expandOrders: true },
       [],
       0
     );
@@ -156,7 +159,7 @@ description: "Test workflow"
       new Map(),
       'test-msg-123',
       {},
-      { deduplicateSameMessage: true, maxNestingDepth: 3 }
+      { deduplicateSameMessage: true, maxNestingDepth: 3, expandOrders: true }
     );
 
     console.log(`[TEST] Result text (first 500 chars): ${result.text.slice(0, 500)}`);

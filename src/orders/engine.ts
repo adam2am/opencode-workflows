@@ -268,49 +268,56 @@ export function processMessageText(
       allRefs.set(canonicalName, newRef);
       result.found.push(canonicalName);
       
-      const argsAsResolvers: Record<string, VariableResolver> = {};
-      for (const [key, value] of Object.entries(args)) {
-        argsAsResolvers[`args.${key}`] = () => value;
-      }
+      const shouldExpand = order.expand && config.expandOrders;
       
-      let expandedContent = expandVariables(order.content, { ...contextVariables, ...argsAsResolvers });
-      
-      const nestedResult = expandNestedOrders(
-        expandedContent,
-        order,
-        orders,
-        allRefs,
-        messageID,
-        contextVariables,
-        config,
-        [canonicalName],
-        1
-      );
-      expandedContent = nestedResult.content;
-      result.found.push(...nestedResult.nestedOrders);
-      result.hints.push(...nestedResult.hints);
-      result.warnings.push(...nestedResult.warnings);
-      
-      for (const [k, v] of nestedResult.newRefs) {
-        result.newRefs.set(k, v);
-        allRefs.set(k, v);
-      }
-      
-      if (nestedResult.hints.length > 0) {
-        expandedContent += '\n\n' + nestedResult.hints.join('\n');
-      }
-      
-      const fullContent = `\n\n<workflow name="${canonicalName}" id="${canonicalName}-${id}" source="${order.source}">\n${expandedContent}\n</workflow>\n\n`;
+      if (shouldExpand) {
+        const argsAsResolvers: Record<string, VariableResolver> = {};
+        for (const [key, value] of Object.entries(args)) {
+          argsAsResolvers[`args.${key}`] = () => value;
+        }
+        
+        let expandedContent = expandVariables(order.content, { ...contextVariables, ...argsAsResolvers });
+        
+        const nestedResult = expandNestedOrders(
+          expandedContent,
+          order,
+          orders,
+          allRefs,
+          messageID,
+          contextVariables,
+          config,
+          [canonicalName],
+          1
+        );
+        expandedContent = nestedResult.content;
+        result.found.push(...nestedResult.nestedOrders);
+        result.hints.push(...nestedResult.hints);
+        result.warnings.push(...nestedResult.warnings);
+        
+        for (const [k, v] of nestedResult.newRefs) {
+          result.newRefs.set(k, v);
+          allRefs.set(k, v);
+        }
+        
+        if (nestedResult.hints.length > 0) {
+          expandedContent += '\n\n' + nestedResult.hints.join('\n');
+        }
+        
+        const fullContent = `\n\n<workflow name="${canonicalName}" id="${canonicalName}-${id}" source="${order.source}">\n${expandedContent}\n</workflow>\n\n`;
 
-      if (config.deduplicateSameMessage) {
-        expanded = expanded.replace(token, fullContent);
-        const beforeReplace = expanded;
-        expanded = expanded.split(token).join(`[use_workflow:${canonicalName}-${id}]`);
-        if (expanded !== beforeReplace && !result.reused.includes(canonicalName)) {
-          result.reused.push(canonicalName);
+        if (config.deduplicateSameMessage) {
+          expanded = expanded.replace(token, fullContent);
+          const beforeReplace = expanded;
+          expanded = expanded.split(token).join(`[use_workflow:${canonicalName}-${id}]`);
+          if (expanded !== beforeReplace && !result.reused.includes(canonicalName)) {
+            result.reused.push(canonicalName);
+          }
+        } else {
+          expanded = expanded.split(token).join(fullContent);
         }
       } else {
-        expanded = expanded.split(token).join(fullContent);
+        const hintContent = `[//${canonicalName} → call get_workflow("${canonicalName}") to read]`;
+        expanded = expanded.split(token).join(hintContent);
       }
     } else {
       result.reused.push(canonicalName);
@@ -331,6 +338,11 @@ export function processMessageText(
       
       const order = orders.get(refName);
       if (order) {
+        const shouldExpandOrphan = order.expand && config.expandOrders;
+        if (!shouldExpandOrphan) {
+          continue;
+        }
+        
         const id = shortId(messageID, refName, []);
         const newRef: OrderRef = { id, messageID, implicit: true };
         result.newRefs.set(refName, newRef);

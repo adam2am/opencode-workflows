@@ -22,8 +22,10 @@ import {
   findMatchingAutoOrders,
   formatAutoApplyHint,
   formatUserHint,
+  processMessageText,
 } from '../src/orders';
 import type { Order } from '../src/orders';
+import type { CaptainConfig } from '../src/core/types';
 // Test helpers
 import { createMockOrder } from '../src/testing';
 
@@ -647,6 +649,46 @@ body`;
     const result = parseFrontmatter(content);
     expect(result.orderInOrder).toBe('false');
   });
+
+  test('expand defaults to true when not specified', () => {
+    const content = `---
+description: test
+---
+body`;
+
+    const result = parseFrontmatter(content);
+    expect(result.expand).toBe(true);
+  });
+
+  test('expand: false is parsed correctly', () => {
+    const content = `---
+expand: false
+---
+body`;
+
+    const result = parseFrontmatter(content);
+    expect(result.expand).toBe(false);
+  });
+
+  test('expand: true is parsed correctly', () => {
+    const content = `---
+expand: true
+---
+body`;
+
+    const result = parseFrontmatter(content);
+    expect(result.expand).toBe(true);
+  });
+
+  test('expand: no is treated as false', () => {
+    const content = `---
+expand: no
+---
+body`;
+
+    const result = parseFrontmatter(content);
+    expect(result.expand).toBe(false);
+  });
 });
 
 describe('findWorkflowByName (canonical lookup)', () => {
@@ -1118,7 +1160,7 @@ describe('formatAutoApplyHint', () => {
     const keywords = new Map([['test', ['keyword1']]]);
     const result = formatAutoApplyHint(['test'], orders, keywords);
     expect(result).not.toContain('\u200B');
-    expect(result).toContain('//[test]');
+    expect(result).toContain('[// test]');
   });
 
   test('singular header for one workflow (standard theme)', () => {
@@ -1159,5 +1201,120 @@ describe('formatUserHint', () => {
     const result = formatUserHint(['audit'], descriptions);
     expect(result).toContain('[Suggested workflows:');
     expect(result).toContain('// audit');
+  });
+});
+
+describe('processMessageText - expand option', () => {
+  const defaultConfig: CaptainConfig = {
+    deduplicateSameMessage: true,
+    maxNestingDepth: 3,
+    expandOrders: true,
+  };
+
+  const createOrder = (name: string, expand: boolean): Order => createMockOrder({
+    name,
+    content: `Content of ${name}`,
+    expand,
+  });
+
+  test('expand:false injects hint instead of full content', () => {
+    const orders = new Map([['my-order', createOrder('my-order', false)]]);
+    const result = processMessageText(
+      'use //my-order please',
+      orders,
+      new Map(),
+      'msg-1',
+      {},
+      defaultConfig
+    );
+    
+    expect(result.text).toContain('[//my-order → call get_workflow("my-order") to read]');
+    expect(result.text).not.toContain('<workflow');
+    expect(result.text).not.toContain('Content of my-order');
+    expect(result.found).toContain('my-order');
+  });
+
+  test('expand:true (default) injects full content', () => {
+    const orders = new Map([['my-order', createOrder('my-order', true)]]);
+    const result = processMessageText(
+      'use //my-order please',
+      orders,
+      new Map(),
+      'msg-1',
+      {},
+      defaultConfig
+    );
+    
+    expect(result.text).toContain('<workflow name="my-order"');
+    expect(result.text).toContain('Content of my-order');
+    expect(result.found).toContain('my-order');
+  });
+
+  test('config.expandOrders:false makes all orders hint-only', () => {
+    const configNoExpand: CaptainConfig = { ...defaultConfig, expandOrders: false };
+    const orders = new Map([['my-order', createOrder('my-order', true)]]);
+    const result = processMessageText(
+      'use //my-order please',
+      orders,
+      new Map(),
+      'msg-1',
+      {},
+      configNoExpand
+    );
+    
+    expect(result.text).toContain('[//my-order → call get_workflow("my-order") to read]');
+    expect(result.text).not.toContain('<workflow');
+  });
+
+  test('per-order expand:false overrides config.expandOrders:true', () => {
+    const orders = new Map([['my-order', createOrder('my-order', false)]]);
+    const result = processMessageText(
+      'use //my-order please',
+      orders,
+      new Map(),
+      'msg-1',
+      {},
+      defaultConfig
+    );
+    
+    expect(result.text).toContain('[//my-order → call get_workflow("my-order") to read]');
+    expect(result.text).not.toContain('<workflow');
+  });
+
+  test('mixed orders: each respects its own expand setting', () => {
+    const orders = new Map([
+      ['order-expand', createOrder('order-expand', true)],
+      ['order-hint', createOrder('order-hint', false)],
+    ]);
+    const result = processMessageText(
+      'use //order-expand and //order-hint',
+      orders,
+      new Map(),
+      'msg-1',
+      {},
+      defaultConfig
+    );
+    
+    expect(result.text).toContain('<workflow name="order-expand"');
+    expect(result.text).toContain('Content of order-expand');
+    expect(result.text).toContain('[//order-hint → call get_workflow("order-hint") to read]');
+    expect(result.text).not.toContain('<workflow name="order-hint"');
+  });
+
+  test('expand:false with deduplication: all mentions become hints (no references)', () => {
+    const orders = new Map([['my-order', createOrder('my-order', false)]]);
+    const result = processMessageText(
+      '//my-order first, //my-order second',
+      orders,
+      new Map(),
+      'msg-1',
+      {},
+      defaultConfig
+    );
+    
+    const hintCount = (result.text.match(/\[\/\/my-order → call get_workflow/g) || []).length;
+    
+    expect(hintCount).toBe(2);
+    expect(result.text).not.toContain('[use_workflow:');
   });
 });

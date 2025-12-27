@@ -22,6 +22,7 @@ export function parseOrderFrontmatter(fileContent: string): ParsedOrderFrontmatt
       spawnAt: [],
       automention: 'true',
       orderInOrder: 'false',
+      expand: true,
     };
   }
 
@@ -58,10 +59,18 @@ export function parseOrderFrontmatter(fileContent: string): ParsedOrderFrontmatt
     }
   }
 
+  const expandMatch = yaml.match(/^expand:\s*(.*)$/m);
+  let expand = true;
+  if (expandMatch) {
+    const val = expandMatch[1].trim().toLowerCase();
+    expand = val !== 'false' && val !== 'no';
+  }
+
   return {
     ...base,
     spawnAt,
     automention,
     orderInOrder,
+    expand,
   };
 }

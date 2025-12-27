@@ -532,7 +532,7 @@ export const WorkflowsPlugin: Plugin = async (ctx: PluginInput) => {
       }),
 
       create_workflow: tool({
-        description: 'Create a new workflow template with YAML frontmatter. ASK user: 1) global or project scope? 2) shortcuts/aliases? 3) description? 4) tags for auto-suggestion? 5) automention mode (true/expanded/false)? 6) onlyFor agents? 7) spawnAt agents?',
+        description: 'Create a new workflow template with YAML frontmatter. ASK user: 1) global or project scope? 2) shortcuts/aliases? 3) description? 4) tags for auto-suggestion? 5) automention mode (true/expanded/false)? 6) onlyFor agents? 7) spawnAt agents? 8) expand (true/false)?',
         args: {
           name: tool.schema.string().describe('The workflow name (without // prefix)'),
           content: tool.schema.string().describe('The markdown content of the workflow (without frontmatter - it will be added automatically)'),
@@ -543,6 +543,7 @@ export const WorkflowsPlugin: Plugin = async (ctx: PluginInput) => {
           automention: tool.schema.enum(['true', 'expanded', 'false']).describe('Auto-suggestion mode: true (hint to AI), expanded (full inject), false (disabled). Default: true').optional(),
           onlyFor: tool.schema.string().describe('Comma-separated agent names this workflow is visible to. Empty = all agents').optional(),
           spawnAt: tool.schema.string().describe('Agent spawn triggers. Format: "agent" or "agent:expanded". E.g., "frontend-ui-ux-engineer:expanded, oracle"').optional(),
+          expand: tool.schema.enum(['true', 'false']).describe('When mentioned, expand full content (true) or show hint for AI to fetch (false). Default: true').optional(),
         },
         async execute(args) {
           const scope = args.scope || 'global';
@@ -574,6 +575,7 @@ export const WorkflowsPlugin: Plugin = async (ctx: PluginInput) => {
           if (autoVal !== 'true') frontmatter += `automention: ${autoVal}\n`;
           if (onlyForArray.length > 0) frontmatter += `onlyFor: [${onlyForArray.join(', ')}]\n`;
           if (spawnAtArray.length > 0) frontmatter += `spawnAt: [${spawnAtArray.join(', ')}]\n`;
+          if (args.expand === 'false') frontmatter += `expand: false\n`;
           frontmatter += '---\n';
           
           const fullContent = frontmatter + args.content;
@@ -588,7 +590,8 @@ export const WorkflowsPlugin: Plugin = async (ctx: PluginInput) => {
           const autoMsg = autoVal !== 'true' ? `\nAutomention: ${autoVal}` : '';
           const onlyForMsg = onlyForArray.length > 0 ? `\nOnlyFor: ${onlyForArray.join(', ')}` : '';
           const spawnMsg = spawnAtArray.length > 0 ? `\nSpawnAt: ${spawnAtArray.join(', ')}` : '';
-          return `Workflow "//${args.name}" created in ${scope} scope.\nPath: ${filePath}${shortcutMsg}${tagMsg}${autoMsg}${onlyForMsg}${spawnMsg}`;
+          const expandMsg = args.expand === 'false' ? `\nExpand: false (AI will fetch via tool)` : '';
+          return `Workflow "//${args.name}" created in ${scope} scope.\nPath: ${filePath}${shortcutMsg}${tagMsg}${autoMsg}${onlyForMsg}${spawnMsg}${expandMsg}`;
         },
       }),
 

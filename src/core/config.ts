@@ -6,6 +6,7 @@ import type { Theme, CaptainConfig } from './types';
 const DEFAULT_CONFIG: CaptainConfig = {
   deduplicateSameMessage: true,
   maxNestingDepth: 3,
+  expandOrders: true,
 };
 
 export function loadConfig(): CaptainConfig {
@@ -35,6 +36,7 @@ export function loadConfig(): CaptainConfig {
     return {
       deduplicateSameMessage: json.deduplicateSameMessage ?? true,
       maxNestingDepth: json.maxNestingDepth ?? 3,
+      expandOrders: json.expandOrders ?? true,
       theme: json.theme,
     };
   } catch (err) {

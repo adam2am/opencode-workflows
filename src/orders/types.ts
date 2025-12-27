@@ -13,6 +13,7 @@ export interface Order extends BasePrompt {
   automention: AutomentionMode;
   orderInOrder: OrderInOrderMode;
   spawnAt: SpawnAtEntry[];
+  expand: boolean;
 }
 
 export interface OrderRef {
@@ -46,5 +47,6 @@ export interface ParsedOrderFrontmatter {
   description: string;
   automention: AutomentionMode;
   orderInOrder: OrderInOrderMode;
+  expand: boolean;
   body: string;
 }

@@ -33,6 +33,7 @@ export function loadOrders(projectDir: string): Map<string, Order> {
       description: parsed.description,
       automention: parsed.automention,
       orderInOrder: parsed.orderInOrder,
+      expand: parsed.expand,
       content: parsed.body,
       source,
       path: filePath,
@@ -104,6 +105,7 @@ export interface CreateOrderParams {
   automention?: string;
   onlyFor?: string;
   spawnAt?: string;
+  expand?: string;
 }
 
 export function createOrder(state: OrdersState, params: CreateOrderParams): string {
@@ -116,6 +118,7 @@ export function createOrder(state: OrdersState, params: CreateOrderParams): stri
   if (params.automention) frontmatter += `automention: ${params.automention}\n`;
   if (params.onlyFor) frontmatter += `onlyFor: [${params.onlyFor}]\n`;
   if (params.spawnAt) frontmatter += `spawnAt: [${params.spawnAt}]\n`;
+  if (params.expand) frontmatter += `expand: ${params.expand}\n`;
   frontmatter += '---\n\n';
   
   const fullContent = frontmatter + params.content;

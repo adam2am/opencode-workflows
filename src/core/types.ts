@@ -76,5 +76,6 @@ export type Theme = 'pirate' | 'standard';
 export interface CaptainConfig {
   deduplicateSameMessage: boolean;
   maxNestingDepth: number;
+  expandOrders: boolean;
   theme?: Theme;
 }

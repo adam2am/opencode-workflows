@@ -44,6 +44,7 @@ describe('Bug Fixes Regression Tests', () => {
       description: 'Analyze from 5 perspectives',
       automention: 'true',
       orderInOrder: 'false',
+      expand: true,
       content: 'content',
       source: 'global',
       path: '/path'
@@ -101,6 +102,7 @@ describe('Bug Fixes Regression Tests', () => {
       description: 'Analyze from 5 perspectives',
       automention: 'true',
       orderInOrder: 'false',
+      expand: true,
       content: 'content',
       source: 'global',
       path: '/path'
@@ -212,29 +214,33 @@ describe('Bug Fixes Regression Tests', () => {
       
       const parentWorkflow = {
         name: 'patchlog',
+        promptType: 'order' as const,
         aliases: [],
         tags: [],
         onlyFor: [],
       spawnAt: [],
         description: 'Patchlog',
-        automention: 'false',
-        orderInOrder: 'false', // Should NOT expand nested
+        automention: 'false' as const,
+        orderInOrder: 'false' as const,
+        expand: true,
         content: 'Example: `//5-approaches` suggests the workflow',
-        source: 'global',
+        source: 'global' as const,
         path: '/mock/patchlog.md'
       };
 
       const nestedWorkflow = {
         name: '5-approaches',
+        promptType: 'order' as const,
         aliases: [],
         tags: [],
         onlyFor: [],
       spawnAt: [],
         description: '5 approaches',
-        automention: 'false',
-        orderInOrder: 'false',
+        automention: 'false' as const,
+        orderInOrder: 'false' as const,
+        expand: true,
         content: '# 5 Approaches Content',
-        source: 'global',
+        source: 'global' as const,
         path: '/mock/5-approaches.md'
       };
 
@@ -242,7 +248,7 @@ describe('Bug Fixes Regression Tests', () => {
       workflows.set('patchlog', parentWorkflow);
       workflows.set('5-approaches', nestedWorkflow);
 
-      const config = { deduplicateSameMessage: true, maxNestingDepth: 3 };
+      const config = { deduplicateSameMessage: true, maxNestingDepth: 3, expandOrders: true };
 
       const result = processMessageText(
         '//patchlog',
@@ -272,29 +278,33 @@ describe('Bug Fixes Regression Tests', () => {
       
       const parentWorkflow = {
         name: 'parent-wf',
+        promptType: 'order' as const,
         aliases: [],
         tags: [],
         onlyFor: [],
       spawnAt: [],
         description: 'Parent workflow',
-        automention: 'false',
-        orderInOrder: 'false', // Explicitly false
+        automention: 'false' as const,
+        orderInOrder: 'false' as const,
+        expand: true,
         content: 'Check out //nested-wf for more',
-        source: 'global',
+        source: 'global' as const,
         path: '/mock/parent.md'
       };
 
       const nestedWorkflow = {
         name: 'nested-wf',
+        promptType: 'order' as const,
         aliases: [],
         tags: [],
         onlyFor: [],
       spawnAt: [],
         description: 'Nested workflow',
-        automention: 'false',
-        orderInOrder: 'false',
+        automention: 'false' as const,
+        orderInOrder: 'false' as const,
+        expand: true,
         content: '# Nested Content',
-        source: 'global',
+        source: 'global' as const,
         path: '/mock/nested.md'
       };
 
@@ -302,7 +312,7 @@ describe('Bug Fixes Regression Tests', () => {
       workflows.set('parent-wf', parentWorkflow);
       workflows.set('nested-wf', nestedWorkflow);
 
-      const config = { deduplicateSameMessage: true, maxNestingDepth: 3 };
+      const config = { deduplicateSameMessage: true, maxNestingDepth: 3, expandOrders: true };
 
       const result = processMessageText(
         '//parent-wf',
@@ -330,29 +340,33 @@ describe('Bug Fixes Regression Tests', () => {
       
       const parentWorkflow = {
         name: 'parent-wf',
+        promptType: 'order' as const,
         aliases: [],
         tags: [],
         onlyFor: [],
       spawnAt: [],
         description: 'Parent workflow',
-        automention: 'false',
-        orderInOrder: 'true', // ENABLED
+        automention: 'false' as const,
+        orderInOrder: 'true' as const,
+        expand: true,
         content: 'Check out //nested-wf for more',
-        source: 'global',
+        source: 'global' as const,
         path: '/mock/parent.md'
       };
 
       const nestedWorkflow = {
         name: 'nested-wf',
+        promptType: 'order' as const,
         aliases: [],
         tags: [],
         onlyFor: [],
       spawnAt: [],
         description: 'Nested workflow',
-        automention: 'false',
-        orderInOrder: 'false',
+        automention: 'false' as const,
+        orderInOrder: 'false' as const,
+        expand: true,
         content: '# Nested Content',
-        source: 'global',
+        source: 'global' as const,
         path: '/mock/nested.md'
       };
 
@@ -360,7 +374,7 @@ describe('Bug Fixes Regression Tests', () => {
       workflows.set('parent-wf', parentWorkflow);
       workflows.set('nested-wf', nestedWorkflow);
 
-      const config = { deduplicateSameMessage: true, maxNestingDepth: 3 };
+      const config = { deduplicateSameMessage: true, maxNestingDepth: 3, expandOrders: true };
 
       const result = processMessageText(
         '//parent-wf',

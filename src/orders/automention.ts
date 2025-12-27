@@ -146,11 +146,21 @@ export function highlightMatchedWords(text: string, keywords: string[]): string 
  * // => "hello"
  */
 export function stripExistingHints(text: string): string {
-  // Match from hint opening to end of text (handles complete + corrupted)
-  // Supports both themes: "Workflow matched" and "Orders matched"
-  // Also catches partial corruption like "[⚡ Workflow" or "[⚡ Orders"
-  const hintPattern = /\n*\[⚡ (?:Workflow|Orders)[\s\S]*$/i;
-  return text.replace(hintPattern, '').trim();
+  const HINT_FINGERPRINTS = [
+    /\[⚡/,                          // header (any corruption level)
+    /^ACTION_REQUIRED:\s*IF/i,       // our exact phrase
+    /↳\s*\[\/\//,                    // new format: ↳ [//name]
+    /↳\s*\/\/\[/,                    // old format: ↳ //[name]  
+    /↳\s*Desc:\s*[`"]/,              // ↳ Desc: `...` or ↳ Desc: "..."
+    /\(matched:\s*"/,                // (matched: "x", "y")
+  ];
+
+  return text
+    .split('\n')
+    .filter(line => !HINT_FINGERPRINTS.some(fp => fp.test(line)))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 /**
@@ -226,7 +236,7 @@ export function formatAutoApplyHint(
     const triggerHint = triggers.length > 0 
       ? ` (matched: ${triggers.slice(0, 3).map(t => `"${t}"`).join(', ')})`
       : '';
-    return `↳ //[${name}]${triggerHint}\n↳ Desc: "${desc}"`;
+    return `↳ [// ${name}]${triggerHint}\n↳ Desc: \`${desc}\``;
   });
 
   return `[${header}]
