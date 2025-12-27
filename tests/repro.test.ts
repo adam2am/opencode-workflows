@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'bun:test';
 import { shortId } from '../src/core';
-import { extractOrderReferences } from '../src/orders';
+import { extractOrderReferences } from '../src/scrolls';
 
 // Backward compat alias
 const extractWorkflowReferences = extractOrderReferences;

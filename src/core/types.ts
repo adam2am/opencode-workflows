@@ -27,7 +27,7 @@ export type TagEntry = string | (string | TagOrGroup)[] | TagOrGroup | SequenceT
 // Prompt Types
 // ============================================================================
 
-export type PromptType = 'order' | 'rule' | 'crew';
+export type PromptType = 'scroll' | 'order' | 'rule' | 'crew';
 
 /**
  * Base interface for all prompt types (orders, rules, crew).

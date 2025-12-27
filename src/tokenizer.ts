@@ -1,7 +1,6 @@
 import { logger } from './logger';
-import { parseOrderArgs } from './orders';
+import { parseOrderArgs } from './scrolls';
 
-// Backward compat alias
 const parseWorkflowArgs = parseOrderArgs;
 
 export interface TokenizedMention {

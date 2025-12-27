@@ -23,8 +23,8 @@ import {
   formatAutoApplyHint,
   formatUserHint,
   processMessageText,
-} from '../src/orders';
-import type { Order } from '../src/orders';
+} from '../src/scrolls';
+import type { Order } from '../src/scrolls';
 import type { CaptainConfig } from '../src/core/types';
 // Test helpers
 import { createMockOrder } from '../src/testing';

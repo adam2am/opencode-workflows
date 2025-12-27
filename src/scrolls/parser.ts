@@ -1,33 +1,36 @@
 import { parseBaseFrontmatter, parseArrayField, extractYaml } from '../core/parser';
-import type { SpawnAtEntry, AutomentionMode, OrderInOrderMode, ParsedOrderFrontmatter } from './types';
+import type { SpawnForEntry, AutomentionMode, ScrollInScrollMode, ParsedScrollFrontmatter } from './types';
 
-export function parseSpawnAtField(yaml: string): SpawnAtEntry[] {
-  const raw = parseArrayField(yaml, 'spawnAt');
+export function parseSpawnForField(yaml: string): SpawnForEntry[] {
+  const raw = parseArrayField(yaml, 'spawnFor') || parseArrayField(yaml, 'spawnAt');
   return raw.map(entry => {
     if (entry.includes(':')) {
       const [agent, mode] = entry.split(':');
-      return { agent: agent.trim(), mode: mode.trim() === 'expanded' ? 'expanded' : 'hint' } as SpawnAtEntry;
+      return { agent: agent.trim(), mode: mode.trim() === 'expanded' ? 'expanded' : 'hint' } as SpawnForEntry;
     }
-    return { agent: entry.trim(), mode: 'hint' } as SpawnAtEntry;
+    return { agent: entry.trim(), mode: 'hint' } as SpawnForEntry;
   });
 }
 
-export function parseOrderFrontmatter(fileContent: string): ParsedOrderFrontmatter {
+export function parseScrollFrontmatter(fileContent: string): ParsedScrollFrontmatter {
   const base = parseBaseFrontmatter(fileContent);
   const extracted = extractYaml(fileContent);
   
   if (!extracted) {
     return {
       ...base,
+      spawnFor: [],
       spawnAt: [],
       automention: 'true',
+      scrollInScroll: 'false',
       orderInOrder: 'false',
       expand: true,
+      include: [],
     };
   }
 
   const { yaml } = extracted;
-  const spawnAt = parseSpawnAtField(yaml);
+  const spawnFor = parseSpawnForField(yaml);
   
   const autoMatch = yaml.match(/^automention:\s*(.*)$/m);
   const legacyAutoMatch = yaml.match(/^autoworkflow:\s*(.*)$/m);
@@ -47,15 +50,16 @@ export function parseOrderFrontmatter(fileContent: string): ParsedOrderFrontmatt
 
   const wiwMatch = yaml.match(/^workflowInWorkflow:\s*(.*)$/m);
   const oioMatch = yaml.match(/^orderInOrder:\s*(.*)$/m);
-  let orderInOrder: OrderInOrderMode = 'false';
+  const sisMatch = yaml.match(/^scrollInScroll:\s*(.*)$/m);
+  let scrollInScroll: ScrollInScrollMode = 'false';
   
-  const wiwMatchToUse = wiwMatch || oioMatch;
-  if (wiwMatchToUse) {
-    const val = wiwMatchToUse[1].trim().toLowerCase();
+  const sisMatchToUse = sisMatch || oioMatch || wiwMatch;
+  if (sisMatchToUse) {
+    const val = sisMatchToUse[1].trim().toLowerCase();
     if (val === 'true' || val === 'yes') {
-      orderInOrder = 'true';
+      scrollInScroll = 'true';
     } else if (val === 'hints' || val === 'hint') {
-      orderInOrder = 'hints';
+      scrollInScroll = 'hints';
     }
   }
 
@@ -66,11 +70,19 @@ export function parseOrderFrontmatter(fileContent: string): ParsedOrderFrontmatt
     expand = val !== 'false' && val !== 'no';
   }
 
+  const include = parseArrayField(yaml, 'include');
+
   return {
     ...base,
-    spawnAt,
+    spawnFor,
+    spawnAt: spawnFor,
     automention,
-    orderInOrder,
+    scrollInScroll,
+    orderInOrder: scrollInScroll,
     expand,
+    include,
   };
 }
+
+export const parseSpawnAtField = parseSpawnForField;
+export const parseOrderFrontmatter = parseScrollFrontmatter;

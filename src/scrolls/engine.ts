@@ -1,5 +1,5 @@
 import type { VariableResolver, CaptainConfig } from '../core/types';
-import type { Order, OrderRef, OrderMention, ExpansionResult } from './types';
+import type { Scroll, ScrollRef, ScrollMention, ExpansionResult, Order, OrderRef, OrderMention } from './types';
 import { findByName, findAllMatches } from '../core/matcher';
 import { expandVariables } from '../core/variables';
 import { shortId } from '../core/utils';
@@ -42,6 +42,8 @@ export function parseOrderArgs(argsString: string | undefined): Record<string, s
 export function detectOrderMentions(text: string): OrderMention[] {
   return MarkdownAwareTokenizer.tokenize(text);
 }
+
+export const detectScrollMentions = detectOrderMentions;
 
 export function extractOrderReferences(text: string): string[] {
   const refs = new Set<string>();
@@ -114,7 +116,7 @@ export function expandNestedOrders(
     newRefs: new Map()
   };
 
-  if (parentOrder.orderInOrder !== 'true' && parentOrder.orderInOrder !== 'hints') {
+  if (parentOrder.scrollInScroll !== 'true' && parentOrder.scrollInScroll !== 'hints') {
     return result;
   }
 
@@ -123,7 +125,7 @@ export function expandNestedOrders(
     return result;
   }
 
-  if (parentOrder.orderInOrder === 'hints') {
+  if (parentOrder.scrollInScroll === 'hints') {
     const nestedNames = nestedMentions
       .map(m => findByName(m.name, [...orders.keys()]))
       .filter((n): n is string => n !== null);

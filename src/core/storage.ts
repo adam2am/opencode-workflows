@@ -5,7 +5,8 @@ import type { PromptType, BasePrompt } from './types';
 import { parseBaseFrontmatter } from './parser';
 
 export const FOLDER_ALIASES: Record<PromptType, string[]> = {
-  order: ['orders', 'workflows', 'commands'],
+  scroll: ['scrolls', 'orders', 'workflows', 'commands'],
+  order: ['scrolls', 'orders', 'workflows', 'commands'],
   rule: ['rules', 'creeds', 'code'],
   crew: ['crew', 'agents', 'mates'],
 };

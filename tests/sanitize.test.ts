@@ -4,11 +4,11 @@ import {
   stripHighlightBrackets, 
   sanitizeUserMessage,
   formatAutoApplyHint
-} from '../src/orders';
-import type { Order } from '../src/orders/types';
+} from '../src/scrolls';
+import type { Order } from '../src/scrolls/types';
 
 function mockOrder(name: string, desc: string): Order {
-  return { name, description: desc, content: '', source: 'global', aliases: [], tags: [], onlyFor: [], automention: 'true', spawnAt: [], orderInOrder: 'false', expand: true, path: '', promptType: 'order' };
+  return { name, description: desc, content: '', source: 'global', aliases: [], tags: [], onlyFor: [], automention: 'true', spawnFor: [], scrollInScroll: 'false', expand: true, include: [], includeWarnings: [], path: '', promptType: 'scroll' };
 }
 
 describe('stripExistingHints', () => {

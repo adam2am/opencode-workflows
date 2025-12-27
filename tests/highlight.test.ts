@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import { highlightMatchedWords } from '../src/orders';
+import { highlightMatchedWords } from '../src/scrolls';
 
 describe('highlightMatchedWords', () => {
   test('adjacent keywords wrapped together', () => {

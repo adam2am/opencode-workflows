@@ -1,33 +1,43 @@
 import type { VariableResolver, CaptainConfig, Theme } from '../core/types';
-import type { Order, OrderRef } from './types';
-import { processMessageText, detectOrderMentions } from './engine';
+import type { Scroll, ScrollRef, Order, OrderRef } from './types';
+import { processMessageText, detectScrollMentions } from './engine';
 import { 
-  findMatchingAutoOrders, 
-  findSpawnOrders, 
+  findMatchingAutoScrolls, 
+  findSpawnScrolls, 
   formatAutoApplyHint,
   formatUserHint 
 } from './automention';
 
 export interface SessionState {
-  orderRefs: Map<string, OrderRef>;
+  scrollRefs: Map<string, ScrollRef>;
   lastMessageID: string | null;
+  /** @deprecated Use scrollRefs instead */
+  get orderRefs(): Map<string, OrderRef>;
 }
 
-export function createSessionState(): SessionState {
+function createSessionStateImpl(): SessionState {
+  const scrollRefs = new Map<string, ScrollRef>();
   return {
-    orderRefs: new Map(),
+    scrollRefs,
     lastMessageID: null,
+    get orderRefs() { return scrollRefs; }
   };
 }
 
+export function createSessionState(): SessionState {
+  return createSessionStateImpl();
+}
+
 export interface MessageProcessingContext {
-  orders: Map<string, Order>;
+  scrolls: Map<string, Scroll>;
   config: CaptainConfig;
   theme: Theme;
   sessionState: SessionState;
   messageID: string;
   activeAgent?: string;
   contextVariables?: Record<string, VariableResolver>;
+  /** @deprecated Use scrolls instead */
+  orders?: Map<string, Order>;
 }
 
 export interface ProcessedMessage {
@@ -47,21 +57,22 @@ export function processUserMessage(
   ctx: MessageProcessingContext
 ): ProcessedMessage {
   const contextVars = ctx.contextVariables || {};
+  const scrolls = ctx.scrolls || ctx.orders || new Map();
   
-  const mentions = detectOrderMentions(text);
+  const mentions = detectScrollMentions(text);
   
   if (mentions.length > 0) {
     const result = processMessageText(
       text,
-      ctx.orders,
-      ctx.sessionState.orderRefs,
+      scrolls,
+      ctx.sessionState.scrollRefs,
       ctx.messageID,
       contextVars,
       ctx.config
     );
     
     for (const [name, ref] of result.newRefs) {
-      ctx.sessionState.orderRefs.set(name, ref);
+      ctx.sessionState.scrollRefs.set(name, ref);
     }
     ctx.sessionState.lastMessageID = ctx.messageID;
     
@@ -76,12 +87,12 @@ export function processUserMessage(
     };
   }
   
-  const ordersArray = [...ctx.orders.values()].filter((v, i, arr) => 
+  const scrollsArray = [...scrolls.values()].filter((v, i, arr) => 
     arr.findIndex(x => x.name === v.name) === i
   );
   
-  const explicitlyMentioned = [...ctx.sessionState.orderRefs.keys()];
-  const autoResult = findMatchingAutoOrders(text, ordersArray, ctx.activeAgent, explicitlyMentioned);
+  const explicitlyMentioned = [...ctx.sessionState.scrollRefs.keys()];
+  const autoResult = findMatchingAutoScrolls(text, scrollsArray, ctx.activeAgent, explicitlyMentioned);
   
   let autoApplyHint: string | undefined;
   let userHint: string | undefined;
@@ -94,15 +105,15 @@ export function processUserMessage(
     
     const result = processMessageText(
       expandedText,
-      ctx.orders,
-      ctx.sessionState.orderRefs,
+      scrolls,
+      ctx.sessionState.scrollRefs,
       ctx.messageID,
       contextVars,
       ctx.config
     );
     
     for (const [name, ref] of result.newRefs) {
-      ctx.sessionState.orderRefs.set(name, ref);
+      ctx.sessionState.scrollRefs.set(name, ref);
     }
     
     return {
@@ -119,18 +130,18 @@ export function processUserMessage(
   if (autoResult.autoApply.length > 0) {
     autoApplyHint = formatAutoApplyHint(
       autoResult.autoApply,
-      ctx.orders,
+      scrolls,
       autoResult.matchedKeywords,
       ctx.theme
     );
   }
   
-  const spawnResult = findSpawnOrders(ordersArray, ctx.activeAgent || '');
+  const spawnResult = findSpawnScrolls(scrollsArray, ctx.activeAgent || '');
   
   if (spawnResult.expanded.length > 0) {
     let expandedText = text;
     for (const name of spawnResult.expanded) {
-      if (!ctx.sessionState.orderRefs.has(name)) {
+      if (!ctx.sessionState.scrollRefs.has(name)) {
         expandedText += `\n\n//${name}`;
       }
     }
@@ -138,15 +149,15 @@ export function processUserMessage(
     if (expandedText !== text) {
       const result = processMessageText(
         expandedText,
-        ctx.orders,
-        ctx.sessionState.orderRefs,
+        scrolls,
+        ctx.sessionState.scrollRefs,
         ctx.messageID,
         contextVars,
         ctx.config
       );
       
       for (const [name, ref] of result.newRefs) {
-        ctx.sessionState.orderRefs.set(name, ref);
+        ctx.sessionState.scrollRefs.set(name, ref);
       }
       
       return {
@@ -165,8 +176,8 @@ export function processUserMessage(
   if (spawnResult.hints.length > 0) {
     const descriptions = new Map<string, string>();
     for (const name of spawnResult.hints) {
-      const order = ctx.orders.get(name);
-      if (order) descriptions.set(name, order.description);
+      const scroll = scrolls.get(name);
+      if (scroll) descriptions.set(name, scroll.description);
     }
     userHint = formatUserHint(spawnResult.hints, descriptions, ctx.theme);
   }
@@ -185,10 +196,13 @@ export function processUserMessage(
 }
 
 export function clearSessionState(state: SessionState): void {
-  state.orderRefs.clear();
+  state.scrollRefs.clear();
   state.lastMessageID = null;
 }
 
-export function getSessionOrderRefs(state: SessionState): Map<string, OrderRef> {
-  return new Map(state.orderRefs);
+export function getSessionScrollRefs(state: SessionState): Map<string, ScrollRef> {
+  return new Map(state.scrollRefs);
 }
+
+/** @deprecated Use getSessionScrollRefs instead */
+export const getSessionOrderRefs = getSessionScrollRefs;

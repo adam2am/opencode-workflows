@@ -22,9 +22,10 @@ import {
 } from './core';
 import type { VariableResolver, CaptainConfig, TagEntry, PluginEvent } from './core';
 
-// Orders module imports
 import {
+  loadScrolls,
   loadOrders,
+  detectScrollMentions,
   detectOrderMentions,
   extractOrderReferences,
   formatAutoApplyHint,
@@ -33,10 +34,12 @@ import {
   sanitizeUserMessage,
   processMessageText,
   expandOrderMentions,
+  findMatchingAutoScrolls,
   findMatchingAutoOrders,
+  findSpawnScrolls,
   findSpawnOrders,
-} from './orders';
-import type { Order, OrderRef, AutomentionMode, OrderInOrderMode } from './orders';
+} from './scrolls';
+import type { Scroll, ScrollRef, Order, OrderRef, AutomentionMode, ScrollInScrollMode } from './scrolls';
 
 // Rules module imports
 import {
@@ -532,7 +535,7 @@ export const WorkflowsPlugin: Plugin = async (ctx: PluginInput) => {
       }),
 
       create_workflow: tool({
-        description: 'Create a new workflow template with YAML frontmatter. ASK user: 1) global or project scope? 2) shortcuts/aliases? 3) description? 4) tags for auto-suggestion? 5) automention mode (true/expanded/false)? 6) onlyFor agents? 7) spawnAt agents? 8) expand (true/false)?',
+        description: 'Create a new workflow template with YAML frontmatter. ASK user: 1) global or project scope? 2) shortcuts/aliases? 3) description? 4) tags for auto-suggestion? 5) automention mode (true/expanded/false)? 6) onlyFor agents? 7) spawnAt agents? 8) expand (true/false)? 9) include files?',
         args: {
           name: tool.schema.string().describe('The workflow name (without // prefix)'),
           content: tool.schema.string().describe('The markdown content of the workflow (without frontmatter - it will be added automatically)'),
@@ -544,6 +547,7 @@ export const WorkflowsPlugin: Plugin = async (ctx: PluginInput) => {
           onlyFor: tool.schema.string().describe('Comma-separated agent names this workflow is visible to. Empty = all agents').optional(),
           spawnAt: tool.schema.string().describe('Agent spawn triggers. Format: "agent" or "agent:expanded". E.g., "frontend-ui-ux-engineer:expanded, oracle"').optional(),
           expand: tool.schema.enum(['true', 'false']).describe('When mentioned, expand full content (true) or show hint for AI to fetch (false). Default: true').optional(),
+          include: tool.schema.string().describe('Comma-separated list of files to include before workflow content. Paths relative to project root or scroll file location').optional(),
         },
         async execute(args) {
           const scope = args.scope || 'global';
@@ -565,6 +569,9 @@ export const WorkflowsPlugin: Plugin = async (ctx: PluginInput) => {
           const spawnAtArray = args.spawnAt
             ? args.spawnAt.split(',').map(a => a.trim()).filter(a => a)
             : [];
+          const includeArray = args.include
+            ? args.include.split(',').map(p => p.trim()).filter(p => p)
+            : [];
           
           const autoVal = args.automention || 'true';
           
@@ -576,6 +583,7 @@ export const WorkflowsPlugin: Plugin = async (ctx: PluginInput) => {
           if (onlyForArray.length > 0) frontmatter += `onlyFor: [${onlyForArray.join(', ')}]\n`;
           if (spawnAtArray.length > 0) frontmatter += `spawnAt: [${spawnAtArray.join(', ')}]\n`;
           if (args.expand === 'false') frontmatter += `expand: false\n`;
+          if (includeArray.length > 0) frontmatter += `include: [${includeArray.join(', ')}]\n`;
           frontmatter += '---\n';
           
           const fullContent = frontmatter + args.content;
@@ -591,7 +599,8 @@ export const WorkflowsPlugin: Plugin = async (ctx: PluginInput) => {
           const onlyForMsg = onlyForArray.length > 0 ? `\nOnlyFor: ${onlyForArray.join(', ')}` : '';
           const spawnMsg = spawnAtArray.length > 0 ? `\nSpawnAt: ${spawnAtArray.join(', ')}` : '';
           const expandMsg = args.expand === 'false' ? `\nExpand: false (AI will fetch via tool)` : '';
-          return `Workflow "//${args.name}" created in ${scope} scope.\nPath: ${filePath}${shortcutMsg}${tagMsg}${autoMsg}${onlyForMsg}${spawnMsg}${expandMsg}`;
+          const includeMsg = includeArray.length > 0 ? `\nInclude: ${includeArray.join(', ')}` : '';
+          return `Workflow "//${args.name}" created in ${scope} scope.\nPath: ${filePath}${shortcutMsg}${tagMsg}${autoMsg}${onlyForMsg}${spawnMsg}${expandMsg}${includeMsg}`;
         },
       }),
 

@@ -1,17 +1,16 @@
 import { describe, test, expect } from 'bun:test';
-import { processMessageText, expandNestedOrders } from '../src/orders';
-import { parseOrderFrontmatter, loadOrders } from '../src/orders';
-import type { Order } from '../src/orders';
+import { processMessageText, expandNestedOrders } from '../src/scrolls';
+import { parseScrollFrontmatter, loadScrolls } from '../src/scrolls';
+import type { Order } from '../src/scrolls';
 
-// Backward compat aliases
-const parseFrontmatter = parseOrderFrontmatter;
+const parseFrontmatter = parseScrollFrontmatter;
 const expandNestedWorkflows = expandNestedOrders;
-const loadWorkflows = loadOrders;
+const loadWorkflows = loadScrolls;
 type Workflow = Order;
 
 describe('Bug 7: Real patchlog.md nested expansion', () => {
   
-  test('parseFrontmatter defaults orderInOrder to "false" when not specified', () => {
+  test('parseFrontmatter defaults scrollInScroll to "false" when not specified', () => {
     const content = `---
 automention: true
 description: "Test workflow"
@@ -19,46 +18,50 @@ description: "Test workflow"
 # Body`;
     
     const result = parseFrontmatter(content);
-    expect(result.orderInOrder).toBe('false');
+    expect(result.scrollInScroll).toBe('false');
   });
 
-  test('loadWorkflows loads patchlog with orderInOrder="false"', () => {
+  test('loadWorkflows loads patchlog with scrollInScroll="false"', () => {
     const workflows = loadWorkflows('.');
     const patchlog = workflows.get('patchlog');
     
     expect(patchlog).toBeDefined();
-    console.log(`[TEST] patchlog.orderInOrder = "${patchlog?.orderInOrder}" (type: ${typeof patchlog?.orderInOrder})`);
-    expect(patchlog?.orderInOrder).toBe('false');
+    console.log(`[TEST] patchlog.scrollInScroll = "${patchlog?.scrollInScroll}" (type: ${typeof patchlog?.scrollInScroll})`);
+    expect(patchlog?.scrollInScroll).toBe('false');
   });
 
-  test('expandNestedWorkflows blocks expansion when orderInOrder="false"', () => {
+  test('expandNestedWorkflows blocks expansion when scrollInScroll="false"', () => {
     const parentWorkflow: Workflow = {
-      promptType: 'order',
+      promptType: 'scroll',
       name: 'patchlog',
       aliases: [],
       tags: [],
       onlyFor: [],
-      spawnAt: [],
+      spawnFor: [],
       description: 'test',
       automention: 'false',
-      orderInOrder: 'false',
+      scrollInScroll: 'false',
       expand: true,
+      include: [],
+      includeWarnings: [],
       content: 'suggests //5-approaches for analysis',
       source: 'global',
       path: '/test'
     };
 
     const nestedWorkflow: Workflow = {
-      promptType: 'order',
+      promptType: 'scroll',
       name: '5-approaches',
       aliases: [],
       tags: [],
       onlyFor: [],
-      spawnAt: [],
+      spawnFor: [],
       description: 'test',
       automention: 'false',
-      orderInOrder: 'false',
+      scrollInScroll: 'false',
       expand: true,
+      include: [],
+      includeWarnings: [],
       content: '# 5 Approaches content',
       source: 'global',
       path: '/test'
@@ -88,13 +91,13 @@ description: "Test workflow"
     expect(result.nestedOrders.length).toBe(0);
   });
 
-  test('expandNestedWorkflows blocks when orderInOrder is undefined', () => {
+  test('expandNestedWorkflows blocks when scrollInScroll is undefined', () => {
     const parentWorkflow: Partial<Workflow> & { name: string; content: string } = {
       name: 'test',
       aliases: [],
       tags: [],
       onlyFor: [],
-      spawnAt: [],
+      spawnFor: [],
       description: 'test',
       automention: 'false',
       content: 'try //5-approaches',
@@ -103,16 +106,18 @@ description: "Test workflow"
     };
 
     const nestedWorkflow: Workflow = {
-      promptType: 'order',
+      promptType: 'scroll',
       name: '5-approaches',
       aliases: [],
       tags: [],
       onlyFor: [],
-      spawnAt: [],
+      spawnFor: [],
       description: 'test',
       automention: 'false',
-      orderInOrder: 'false',
+      scrollInScroll: 'false',
       expand: true,
+      include: [],
+      includeWarnings: [],
       content: '# Content',
       source: 'global',
       path: '/test'
@@ -150,7 +155,7 @@ description: "Test workflow"
       return;
     }
 
-    console.log(`[TEST] patchlog.orderInOrder = "${patchlog.orderInOrder}"`);
+    console.log(`[TEST] patchlog.scrollInScroll = "${patchlog.scrollInScroll}"`);
     console.log(`[TEST] patchlog.content contains //5-approaches: ${patchlog.content.includes('//5-approaches')}`);
 
     const result = processMessageText(

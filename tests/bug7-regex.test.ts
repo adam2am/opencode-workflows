@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import { detectOrderMentions } from '../src/orders';
+import { detectOrderMentions } from '../src/scrolls';
 
 // Backward compat alias
 const detectWorkflowMentions = detectOrderMentions;

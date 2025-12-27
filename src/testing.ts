@@ -10,30 +10,31 @@
 
 import { findByName, findBestMatch, expandVariables, shortId } from './core';
 import type { VariableResolver } from './core';
-import { detectOrderMentions } from './orders';
-import type { OrderInOrderMode, AutomentionMode, SpawnAtEntry, Order } from './orders';
+import { detectScrollMentions } from './scrolls';
+import type { ScrollInScrollMode, AutomentionMode, SpawnForEntry, Scroll, Order, SpawnAtEntry, OrderInOrderMode } from './scrolls';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 
 export type { VariableResolver } from './core';
 
-// Backward compat aliases
-const detectWorkflowMentions = detectOrderMentions;
+const detectWorkflowMentions = detectScrollMentions;
 const findWorkflowByName = findByName;
-type WorkflowInWorkflowMode = OrderInOrderMode;
+type WorkflowInWorkflowMode = ScrollInScrollMode;
 
 export function createMockOrder(partial: Partial<Order> & { name: string }): Order {
   return {
-    promptType: 'order',
+    promptType: 'scroll',
     aliases: [],
     tags: [],
     onlyFor: [],
-    spawnAt: [],
+    spawnFor: [],
     description: '',
     automention: 'true',
-    orderInOrder: 'false',
+    scrollInScroll: 'false',
     expand: true,
+    include: [],
+    includeWarnings: [],
     content: '',
     source: 'global',
     path: `/mock/${partial.name}.md`,

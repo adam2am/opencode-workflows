@@ -1,5 +1,5 @@
 import type { TagOrGroup, Theme } from '../core/types';
-import type { Order } from './types';
+import type { Scroll, Order } from './types';
 import { isOrGroup, matchesTagItem, isSequenceTag, matchesSequenceTag, hasSequenceSyntax, parseSequenceTag, matchesWord } from '../core/matcher';
 import { extractOrderReferences } from './engine';
 import { getMessage } from '../core/config';
@@ -216,7 +216,7 @@ export function findSpawnOrders(
   const expanded: string[] = [];
 
   for (const w of orders) {
-    for (const entry of w.spawnAt) {
+    for (const entry of w.spawnFor) {
       if (entry.agent === activeAgent) {
         if (entry.mode === 'expanded') {
           expanded.push(w.name);
@@ -282,3 +282,6 @@ export function formatAutoApplyHintLegacy(orderNames: string[], descriptions: Ma
   });
   return `[Auto-apply workflow (if relevant): ${items.join('; ')} — use get_workflow("name") to fetch or ignore if irrelevant]`;
 }
+
+export const findMatchingAutoScrolls = findMatchingAutoOrders;
+export const findSpawnScrolls = findSpawnOrders;

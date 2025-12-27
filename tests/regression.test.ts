@@ -1,7 +1,7 @@
 import { describe, test, expect } from 'bun:test';
 import { shortId } from '../src/core';
-import { findMatchingAutoOrders, processMessageText } from '../src/orders';
-import type { Order } from '../src/orders';
+import { findMatchingAutoOrders, processMessageText } from '../src/scrolls';
+import type { Order } from '../src/scrolls';
 
 // Backward compat aliases
 const findMatchingAutoWorkflows = findMatchingAutoOrders;
@@ -35,16 +35,18 @@ describe('Bug Fixes Regression Tests', () => {
 
   describe('Bug 2: Auto-apply triggers for already-referenced workflows', () => {
     const workflow: Workflow = {
-      promptType: 'order',
+      promptType: 'scroll',
       name: '5-approaches',
       aliases: ['5a'],
       tags: [['5', 'approaches']],
       onlyFor: [],
-      spawnAt: [],
+      spawnFor: [],
       description: 'Analyze from 5 perspectives',
       automention: 'true',
-      orderInOrder: 'false',
+      scrollInScroll: 'false',
       expand: true,
+      include: [],
+      includeWarnings: [],
       content: 'content',
       source: 'global',
       path: '/path'
@@ -93,16 +95,18 @@ describe('Bug Fixes Regression Tests', () => {
 
   describe('Bug 3: False positive hint on "// 5 approaches"', () => {
     const workflow: Workflow = {
-      promptType: 'order',
+      promptType: 'scroll',
       name: '5-approaches',
       aliases: ['5a'],
       tags: [['5', 'approaches']],
       onlyFor: [],
-      spawnAt: [],
+      spawnFor: [],
       description: 'Analyze from 5 perspectives',
       automention: 'true',
-      orderInOrder: 'false',
+      scrollInScroll: 'false',
       expand: true,
+      include: [],
+      includeWarnings: [],
       content: 'content',
       source: 'global',
       path: '/path'
@@ -208,38 +212,42 @@ describe('Bug Fixes Regression Tests', () => {
     });
   });
 
-  describe('Bug 7: Nested expansion ignores orderInOrder:false', () => {
+  describe('Bug 7: Nested expansion ignores scrollInScroll:false', () => {
     test('DEBUG: Check if inline code mentions get expanded', () => {
       // processMessageText is now imported from orders
       
       const parentWorkflow = {
         name: 'patchlog',
-        promptType: 'order' as const,
+        promptType: 'scroll' as const,
         aliases: [],
         tags: [],
         onlyFor: [],
-      spawnAt: [],
+      spawnFor: [],
         description: 'Patchlog',
         automention: 'false' as const,
-        orderInOrder: 'false' as const,
+        scrollInScroll: 'false' as const,
         expand: true,
-        content: 'Example: `//5-approaches` suggests the workflow',
+      include: [],
+      includeWarnings: [],
+      content: 'Example: `//5-approaches` suggests the workflow',
         source: 'global' as const,
         path: '/mock/patchlog.md'
       };
 
       const nestedWorkflow = {
         name: '5-approaches',
-        promptType: 'order' as const,
+        promptType: 'scroll' as const,
         aliases: [],
         tags: [],
         onlyFor: [],
-      spawnAt: [],
+      spawnFor: [],
         description: '5 approaches',
         automention: 'false' as const,
-        orderInOrder: 'false' as const,
+        scrollInScroll: 'false' as const,
         expand: true,
-        content: '# 5 Approaches Content',
+      include: [],
+      includeWarnings: [],
+      content: '# 5 Approaches Content',
         source: 'global' as const,
         path: '/mock/5-approaches.md'
       };
@@ -278,32 +286,36 @@ describe('Bug Fixes Regression Tests', () => {
       
       const parentWorkflow = {
         name: 'parent-wf',
-        promptType: 'order' as const,
+        promptType: 'scroll' as const,
         aliases: [],
         tags: [],
         onlyFor: [],
-      spawnAt: [],
+      spawnFor: [],
         description: 'Parent workflow',
         automention: 'false' as const,
-        orderInOrder: 'false' as const,
+        scrollInScroll: 'false' as const,
         expand: true,
-        content: 'Check out //nested-wf for more',
+      include: [],
+      includeWarnings: [],
+      content: 'Check out //nested-wf for more',
         source: 'global' as const,
         path: '/mock/parent.md'
       };
 
       const nestedWorkflow = {
         name: 'nested-wf',
-        promptType: 'order' as const,
+        promptType: 'scroll' as const,
         aliases: [],
         tags: [],
         onlyFor: [],
-      spawnAt: [],
+      spawnFor: [],
         description: 'Nested workflow',
         automention: 'false' as const,
-        orderInOrder: 'false' as const,
+        scrollInScroll: 'false' as const,
         expand: true,
-        content: '# Nested Content',
+      include: [],
+      includeWarnings: [],
+      content: '# Nested Content',
         source: 'global' as const,
         path: '/mock/nested.md'
       };
@@ -340,32 +352,36 @@ describe('Bug Fixes Regression Tests', () => {
       
       const parentWorkflow = {
         name: 'parent-wf',
-        promptType: 'order' as const,
+        promptType: 'scroll' as const,
         aliases: [],
         tags: [],
         onlyFor: [],
-      spawnAt: [],
+      spawnFor: [],
         description: 'Parent workflow',
         automention: 'false' as const,
-        orderInOrder: 'true' as const,
+        scrollInScroll: 'true' as const,
         expand: true,
-        content: 'Check out //nested-wf for more',
+      include: [],
+      includeWarnings: [],
+      content: 'Check out //nested-wf for more',
         source: 'global' as const,
         path: '/mock/parent.md'
       };
 
       const nestedWorkflow = {
         name: 'nested-wf',
-        promptType: 'order' as const,
+        promptType: 'scroll' as const,
         aliases: [],
         tags: [],
         onlyFor: [],
-      spawnAt: [],
+      spawnFor: [],
         description: 'Nested workflow',
         automention: 'false' as const,
-        orderInOrder: 'false' as const,
+        scrollInScroll: 'false' as const,
         expand: true,
-        content: '# Nested Content',
+      include: [],
+      includeWarnings: [],
+      content: '# Nested Content',
         source: 'global' as const,
         path: '/mock/nested.md'
       };

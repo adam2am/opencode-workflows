@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync, rmSync, existsSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { walkDir } from '../src/core';
-import { loadOrders } from '../src/orders';
+import { loadOrders } from '../src/scrolls';
 
 // Backward compat alias
 const loadWorkflows = loadOrders;

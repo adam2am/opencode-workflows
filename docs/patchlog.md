@@ -1,5 +1,26 @@
 # Patchlog
 
+## [1.1.0] - 2025-12-28
+
+### Added
+- File inclusion support via `include` frontmatter field - reuse content from external files in workflows
+- Cross-platform path resolution for include paths (Windows + Unix)
+- New `include` parameter in `create_workflow` tool
+
+### Changed
+- Vocabulary update: "Orders" → "Scrolls" (backwards compatible)
+  - `Order` → `Scroll`
+  - `orderInOrder` → `scrollInScroll`  
+  - `spawnAt` → `spawnFor`
+- All legacy names still work via type aliases
+
+
+## [1.0.5] - 2025-12-27
+
+### Fixed
+- Workflow auto-detection no longer triggers on partial word matches (e.g., "debug" tag won't match "debugger", "do" tag won't match "would")
+
+
 ## [1.0.4] - 2025-12-27
 
 ### Added
