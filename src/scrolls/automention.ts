@@ -22,10 +22,6 @@ export function findMatchingAutoOrders(
   explicitlyMentioned: string[] = []
 ): AutoOrderMatchResult {
   const matchedKeywords = new Map<string, string[]>();
-  
-  if (/\/\/\s+[\w-]/.test(userContent)) {
-    return { autoApply: [], expandedApply: [], matchedKeywords };
-  }
 
   const detectedRefs = extractOrderReferences(userContent);
   const allExplicit = new Set([
@@ -160,16 +156,17 @@ export function highlightMatchedWords(text: string, keywords: string[]): string 
  */
 export function stripExistingHints(text: string): string {
   const HINT_FINGERPRINTS = [
-    /\[Important\. Workflow Detected\]/i, // current header format
-    /\[Workflow Detected\]/i,             // legacy header format
-    /\[⚡/,                                // legacy emoji header
-    /^ACTION_REQUIRED:\s*IF/i,            // our exact phrase
-    /↳\s*`\/\//,                          // new format: ↳ `//name`
-    /↳\s*\[\/\//,                         // old format: ↳ [//name]
-    /↳\s*\/\/\[/,                         // legacy format: ↳ //[name]  
-    /↳\s*Fetch:\s*[`"]/,                  // ↳ Fetch: `...` or ↳ Fetch: "..."
-    /↳\s*Desc:\s*[`"]/,                   // legacy: ↳ Desc: `...`
-    /\(matched:\s*"/,                     // (matched: "x", "y")
+    /\[Important\. Workflow Detected\]/i,
+    /\[Workflow Detected\]/i,
+    /\[⚡/,
+    /^ACTION_REQUIRED(?:_NOW)?:\s*IF/i,
+    /↳\s*`\/\//,
+    /↳\s*\[\/\//,
+    /↳\s*\/\/\[/,
+    /↳\s*Fetch:\s*[`"]/,
+    /↳\s*Desc:\s*[`"]/,
+    /\(matched:\s*[`"]/,
+    /—\s*"/,
   ];
 
   return text
@@ -251,14 +248,14 @@ export function formatAutoApplyHint(
     const desc = w?.description || 'No description';
     const triggers = matchedKeywords.get(name) || [];
     const triggerHint = triggers.length > 0 
-      ? ` (matched: ${triggers.slice(0, 3).map(t => `"${t}"`).join(', ')})`
+      ? ` (matched: ${triggers.slice(0, 3).map(t => `\`${t}\``).join(', ')})`
       : '';
-    return `↳ \`// ${name}\`${triggerHint}\n↳ Fetch: \`${desc}\``;
+    return `↳ \`// ${name}\`${triggerHint}  —  "${desc}"`;
   });
 
   return `[${header}]
-ACTION_REQUIRED: IF matches user intent → get_workflow("name"), else SKIP
-${items.join('\n\n')}`;
+ACTION_REQUIRED_NOW: IF matches user intent → get_workflow(\`name\`), else SKIP
+${items.join('\n')}`;
 }
 
 export function formatUserHint(

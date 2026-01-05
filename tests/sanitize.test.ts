@@ -21,9 +21,8 @@ describe('stripExistingHints', () => {
     const text = `think about 5 approaches
 
 [⚡ Workflow matched]
-ACTION_REQUIRED: IF matches user intent → get_workflow("name"), else SKIP
-↳ [// 5-approaches] (matched: "5", "approaches")
-↳ Desc: "Analyze problems from 5 perspectives"`;
+ACTION_REQUIRED_NOW: IF matches user intent → get_workflow(\`5-approaches\`), else SKIP
+↳ \`//5-approaches\` (matched: \`5\`, \`approaches\`)  —  "Analyze problems from 5 perspectives"`;
     expect(stripExistingHints(text)).toBe('think about 5 approaches');
   });
 
@@ -31,8 +30,8 @@ ACTION_REQUIRED: IF matches user intent → get_workflow("name"), else SKIP
     const text = `think about 5 approaches
 
 [⚡ Orders matched]
-ACTION_REQUIRED: IF matches user intent → get_workflow("name"), else SKIP
-↳ [// 5-approaches]`;
+ACTION_REQUIRED_NOW: IF matches user intent → get_workflow(\`5-approaches\`), else SKIP
+↳ \`//5-approaches\``;
     expect(stripExistingHints(text)).toBe('think about 5 approaches');
   });
 
@@ -40,8 +39,8 @@ ACTION_REQUIRED: IF matches user intent → get_workflow("name"), else SKIP
     const text = `think about 5 approaches
 
 [⚡ Workflow matched]
-ACTION_REQUIRED: IF matches user intent → get_workflow("name"), else SKIP
-↳ [// 5-approaches] (matched: "5", "approaches")
+ACTION_REQUIRED_NOW: IF matches user intent → get_workflow(\`5-approaches\`), else SKIP
+↳ \`//5-approaches\` (matched: \`5\`, \`approaches\`)  —  "Analyze from 5 pers
 user accidentally typed here`;
     expect(stripExistingHints(text)).toBe(`think about 5 approaches
 
@@ -83,19 +82,14 @@ stuff`);
   });
 
   test('REGRESSION: preserves content AFTER corrupted hint block', () => {
-    // User sends message, hint gets appended, then user adds more content after
-    // When hint is corrupted and stripped, the content AFTER should NOT be removed
     const text = `my question here
 
 [⚡ Workflow matched]
-ACTION_REQUIRED: IF matches user intent → get_workflow("name"), else SKIP
-↳ [// 5-approaches] (matched: "5", "approaches")
-↳ Desc: "Analyze from 5 pers
+ACTION_REQUIRED_NOW: IF matches user intent → get_workflow(\`5-approaches\`), else SKIP
+↳ \`//5-approaches\` (matched: \`5\`, \`approaches\`)  —  "Analyze from 5 pers
 
 IMPORTANT CONTENT AFTER THE HINT`;
     
-    // The corrupted hint should be stripped, but "IMPORTANT CONTENT AFTER THE HINT" 
-    // should be PRESERVED (currently being deleted - BUG)
     expect(stripExistingHints(text)).toBe(`my question here
 
 IMPORTANT CONTENT AFTER THE HINT`);
@@ -129,85 +123,76 @@ IMPORTANT CONTENT AFTER`);
   test('orphan lines with fingerprints ARE stripped (no header)', () => {
     const text = `my question
 
-aches (matched: "[5]", "[approaches]")
+aches (matched: \`[5]\`, \`[approaches]\`)
 ↳ Desc: "Analyze problems from [5] perspectives"`;
     expect(stripExistingHints(text)).toBe('my question');
   });
 
   test('orphan ACTION_REQUIRED line stripped', () => {
-    const text = `my question
-
-ACTION_REQUIRED: IF matches user intent → get_workflow("name"), else SKIP
-↳ [// 5-approaches]`;
+    const text = `my question\r
+\r
+ACTION_REQUIRED_NOW: IF matches user intent → get_workflow(\`5-approaches\`), else SKIP\r
+↳ \`//5-approaches\``;
     expect(stripExistingHints(text)).toBe('my question');
   });
 
   test('orphan old format ↳ //[name] stripped', () => {
     const text = `my question
 
-↳ //[5-approaches] (matched: "5")`;
+↳ \`//5-approaches\` (matched: \`5\`)`;
     expect(stripExistingHints(text)).toBe('my question');
   });
 
-  // BUG: formatAutoApplyHint outputs ↳ Desc: ["..."] but regex expects ↳ Desc: "..."
-  test('BUG: strips Desc with BACKTICKS - actual formatAutoApplyHint output', () => {
-    // This is the ACTUAL format produced by formatAutoApplyHint()
-    const text = `my question
-
-[⚡ Workflow matched]
-ACTION_REQUIRED: IF matches user intent → get_workflow("name"), else SKIP
-↳ [// 5-approaches] (matched: "5", "approaches")
-↳ Desc: \`Analyze problems from 5 perspectives\``;
+  test('strips inline description format - actual formatAutoApplyHint output', () => {
+    const text = `my question\r
+\r
+[⚡ Workflow matched]\r
+ACTION_REQUIRED_NOW: IF matches user intent → get_workflow(\`5-approaches\`), else SKIP\r
+↳ \`//5-approaches\` (matched: \`5\`, \`approaches\`)  —  "Analyze problems from 5 perspectives"`;
     
-    // The Desc line with backticks should be stripped!
     expect(stripExistingHints(text)).toBe('my question');
   });
 
-  test('BUG: Desc accumulates on revert - backticks not matched', () => {
-    // Simulate: user reverts message, old Desc survives, new hint appended
-    const text = `my question
-
-↳ Desc: \`Old description that survived\`
-
-[⚡ Workflow matched]
-ACTION_REQUIRED: IF matches user intent → get_workflow("name"), else SKIP
-↳ [// 5-approaches] (matched: "5", "approaches")
-↳ Desc: \`New description appended\``;
+  test('legacy Desc format still stripped - backwards compatibility', () => {
+    const text = `my question\r
+\r
+↳ Desc: \`Old description that survived\`\r
+\r
+[⚡ Workflow matched]\r
+ACTION_REQUIRED_NOW: IF matches user intent → get_workflow(\`5-approaches\`), else SKIP\r
+↳ \`//5-approaches\` (matched: \`5\`, \`approaches\`)  —  "New description"`;
     
-    // BOTH Desc lines should be stripped
     expect(stripExistingHints(text)).toBe('my question');
   });
 
   test('unrecognizable fragment stays - allows clean re-append', () => {
-    const corruptedMessage = `my question
-
+    const corruptedMessage = `my question\r
+\r
 lyze problems from 5 perspectives before solving"`;
     
     const afterStrip = stripExistingHints(corruptedMessage);
     expect(afterStrip).toBe(corruptedMessage.trim());
     
-    const reAppended = `${afterStrip}
-
-[⚡ Workflow matched]
-ACTION_REQUIRED: IF matches user intent → get_workflow("name"), else SKIP
-↳ [// 5-approaches] (matched: "5", "approaches")
-↳ Desc: "Analyze problems from 5 perspectives before solving"`;
+    const reAppended = `${afterStrip}\r
+\r
+[⚡ Workflow matched]\r
+ACTION_REQUIRED_NOW: IF matches user intent → get_workflow(\`5-approaches\`), else SKIP\r
+↳ \`//5-approaches\` (matched: \`5\`, \`approaches\`)  —  "Analyze problems from 5 perspectives before solving"`;
 
     expect(stripExistingHints(reAppended)).toBe(corruptedMessage.trim());
   });
 
   test('fragment + fresh re-append - both stripped correctly', () => {
-    const text = `my question
+    const text = `my question\r
+\r
+lyze problems from [5] perspectives..."\r
+\r
+[⚡ Workflow matched]\r
+ACTION_REQUIRED_NOW: IF matches user intent → get_workflow(\`5-approaches\`), else SKIP\r
+↳ \`//5-approaches\` (matched: \`5\`, \`approaches\`)  —  "Analyze problems from 5 perspectives before solving"`;
 
-lyze problems from [5] perspectives..."
-
-[⚡ Workflow matched]
-ACTION_REQUIRED: IF matches user intent → get_workflow("name"), else SKIP
-↳ [// 5-approaches] (matched: "5", "approaches")
-↳ Desc: "Analyze problems from 5 perspectives before solving"`;
-
-    expect(stripExistingHints(text)).toBe(`my question
-
+    expect(stripExistingHints(text)).toBe(`my question\r
+\r
 lyze problems from [5] perspectives..."`);
   });
 
@@ -222,6 +207,23 @@ lyze problems from [5] perspectives..."`);
     const combined = `${userMessage}\n\n${hint}`;
     
     expect(stripExistingHints(combined)).toBe(userMessage);
+  });
+
+  test('ROUND-TRIP: multiple workflows show all names in ACTION_REQUIRED', () => {
+    const orders = new Map<string, Order>([
+      ['security-audit', mockOrder('security-audit', 'OWASP security audit')],
+      ['inspect', mockOrder('inspect', 'Inspect staged changes')]
+    ]);
+    const keywords = new Map<string, string[]>([
+      ['security-audit', ['security']],
+      ['inspect', ['check']]
+    ]);
+    
+    const userMessage = 'check security';
+    const hint = formatAutoApplyHint(['security-audit', 'inspect'], orders, keywords);
+    
+    expect(hint).toContain('get_workflow(`security-audit`, `inspect`)');
+    expect(stripExistingHints(`${userMessage}\n\n${hint}`)).toBe(userMessage);
   });
 });
 

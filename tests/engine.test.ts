@@ -1245,7 +1245,7 @@ describe('formatAutoApplyHint', () => {
     const keywords = new Map([['test', ['keyword1']]]);
     const result = formatAutoApplyHint(['test'], orders, keywords);
     expect(result).not.toContain('\u200B');
-    expect(result).toContain('`// test`');
+    expect(result).toContain('`//test`');
   });
 
   test('singular header for one workflow (standard theme)', () => {
@@ -1269,7 +1269,7 @@ describe('formatAutoApplyHint', () => {
     const orders = new Map([['test', mockOrder('test', 'Test desc')]]);
     const keywords = new Map([['test', ['security', 'audit']]]);
     const result = formatAutoApplyHint(['test'], orders, keywords);
-    expect(result).toContain('(matched: "security", "audit")');
+    expect(result).toContain('(matched: `security`, `audit`)');
   });
 });
 

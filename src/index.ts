@@ -1,15 +1,13 @@
 import type { Plugin, PluginInput } from '@opencode-ai/plugin';
 import type { Part, UserMessage } from '@opencode-ai/sdk';
 import { tool } from '@opencode-ai/plugin';
-import { existsSync, writeFileSync, unlinkSync, renameSync } from 'fs';
+import { existsSync } from 'fs';
 import { execSync } from 'child_process';
 import { basename } from 'path';
 
 // Core module imports
 import {
   loadConfig,
-  getPromptPath,
-  promptExists,
   findBestMatch,
   findAllMatches,
   findByName,
@@ -66,11 +64,16 @@ const sessionSpawnedAgents = new Map<string, Set<string>>();
 
 
 
+
+
+
 const DISTINCTION_RULE = `
 <system-rule>
 **DISTINCTION RULE**:
-- **Tools**: Native functions provided by plugins (e.g., \`create_workflow\`, \`rename_workflow\`). Call them directly.
-  - **CRITICAL**: The \`workflows\` directory is MANAGED. NEVER use \`read\`, \`write\`, \`edit\`, or \`glob\` on workflow files directly. ALWAYS use the dedicated tools (\`list_workflows\`, \`get_workflow\`, \`edit_workflow\`, \`create_workflow\`).
+- **Managing Resources (Workflows/Rules/Crews)**:
+  - **STEP 1**: Fetch the \`//captain-manager\` workflow (via \`get_workflow("captain-manager")\`) to get the CLI instructions.
+  - **STEP 2**: Use the \`captain\` CLI commands described in that workflow.
+  - **CRITICAL**: The \`workflows\` directory is MANAGED. NEVER use \`read\`, \`write\`, \`edit\`, or \`glob\` on workflow files directly. ALWAYS use the Captain CLI.
 - **Skills**: Markdown-defined capabilities (e.g., \`skills_brand_guidelines\`). Call via \`skill\` tool or \`skills_*\` dynamic tools (if present).
 - **Workflows**: Inline templates triggered by \`//name\` (e.g., \`//commit_review\`). Do NOT call them; just mention them.
 
@@ -187,7 +190,8 @@ export const WorkflowsPlugin: Plugin = async (ctx: PluginInput) => {
     // Register crews as agents in the config
     config: async (config: { agent?: Record<string, unknown> }) => {
       crews = loadCrews(directory);
-      config.agent = registerCrewsWithConfig(crews, config.agent);
+      const captainConfig = loadConfig();
+      config.agent = registerCrewsWithConfig(crews, config.agent, captainConfig);
     },
 
     // FALLBACK: experimental.chat.system.transform for older OpenCode versions
@@ -435,27 +439,6 @@ export const WorkflowsPlugin: Plugin = async (ctx: PluginInput) => {
     },
 
     tool: {
-      expand_workflows: tool({
-        description: `Expand //workflow-name mentions in text. Useful for manually expanding workflow references. Returns the expanded text with workflow content injected.`,
-        args: {
-          text: tool.schema
-            .string()
-            .describe('The text containing //workflow mentions to expand'),
-        },
-        async execute(args) {
-          workflows = loadOrders(directory);
-          config = loadConfig();
-          const { expanded, found, notFound } = expandOrderMentions(args.text, workflows, config);
-
-          if (found.length === 0 && notFound.length === 0) {
-            return `No //workflow mentions detected in text.\n\nOriginal: ${args.text}`;
-          }
-
-          const notFoundMsg = notFound.length > 0 ? `\nUnknown workflows: ${notFound.join(', ')}` : '';
-          return `Expanded ${found.length} workflow(s): ${found.join(', ')}${notFoundMsg}\n\n${expanded}`;
-        },
-      }),
-
       list_workflows: tool({
         description: 'List all available workflow templates that can be mentioned with //workflow-name syntax',
         args: {
@@ -532,450 +515,7 @@ export const WorkflowsPlugin: Plugin = async (ctx: PluginInput) => {
           const folderInfo = workflow.folder ? `\nFolder: ${workflow.folder}` : '';
           return `# Workflow: //${workflow.name}\nSource: ${workflow.source}${folderInfo}\nPath: ${workflow.path}\n\n${workflow.content}`;
         },
-      }),
-
-      create_workflow: tool({
-        description: 'Create a new workflow template with YAML frontmatter. ASK user: 1) global or project scope? 2) shortcuts/aliases? 3) description? 4) tags for auto-suggestion? 5) automention mode (true/expanded/false)? 6) onlyFor agents? 7) spawnAt agents? 8) expand (true/false)? 9) include files?',
-        args: {
-          name: tool.schema.string().describe('The workflow name (without // prefix)'),
-          content: tool.schema.string().describe('The markdown content of the workflow (without frontmatter - it will be added automatically)'),
-          scope: tool.schema.enum(['global', 'project']).describe('Where to save: global (~/.config/opencode/workflows/) or project (.opencode/workflows/)').optional(),
-          shortcuts: tool.schema.string().describe('Comma-separated shortcuts/aliases, e.g., "cr, review"').optional(),
-          description: tool.schema.string().describe('Short description of what the workflow does').optional(),
-          tags: tool.schema.string().describe('Tags for auto-suggestion. Use comma for singles, brackets for groups that must ALL match. E.g., "commit, [staged, changes], review"').optional(),
-          automention: tool.schema.enum(['true', 'expanded', 'false']).describe('Auto-suggestion mode: true (hint to AI), expanded (full inject), false (disabled). Default: true').optional(),
-          onlyFor: tool.schema.string().describe('Comma-separated agent names this workflow is visible to. Empty = all agents').optional(),
-          spawnAt: tool.schema.string().describe('Agent spawn triggers. Format: "agent" or "agent:expanded". E.g., "frontend-ui-ux-engineer:expanded, oracle"').optional(),
-          expand: tool.schema.enum(['true', 'false']).describe('When mentioned, expand full content (true) or show hint for AI to fetch (false). Default: true').optional(),
-          include: tool.schema.string().describe('Comma-separated list of files to include before workflow content. Paths relative to project root or scroll file location').optional(),
-        },
-        async execute(args) {
-          const scope = args.scope || 'global';
-          const filePath = getPromptPath(args.name, scope, 'order', directory);
-
-          if (existsSync(filePath)) {
-            return `Error: Workflow "${args.name}" already exists in ${scope} scope. Use edit_workflow to modify it.`;
-          }
-
-          const shortcutArray = args.shortcuts 
-            ? args.shortcuts.split(',').map(a => a.trim()).filter(a => a)
-            : [];
-          const tagArray = args.tags
-            ? args.tags.split(',').map(t => t.trim()).filter(t => t)
-            : [];
-          const onlyForArray = args.onlyFor
-            ? args.onlyFor.split(',').map(a => a.trim()).filter(a => a)
-            : [];
-          const spawnAtArray = args.spawnAt
-            ? args.spawnAt.split(',').map(a => a.trim()).filter(a => a)
-            : [];
-          const includeArray = args.include
-            ? args.include.split(',').map(p => p.trim()).filter(p => p)
-            : [];
-          
-          const autoVal = args.automention || 'true';
-          
-          let frontmatter = '---\n';
-          if (args.description) frontmatter += `description: "${args.description}"\n`;
-          if (shortcutArray.length > 0) frontmatter += `shortcuts: [${shortcutArray.join(', ')}]\n`;
-          if (tagArray.length > 0) frontmatter += `tags: [${tagArray.join(', ')}]\n`;
-          if (autoVal !== 'true') frontmatter += `automention: ${autoVal}\n`;
-          if (onlyForArray.length > 0) frontmatter += `onlyFor: [${onlyForArray.join(', ')}]\n`;
-          if (spawnAtArray.length > 0) frontmatter += `spawnAt: [${spawnAtArray.join(', ')}]\n`;
-          if (args.expand === 'false') frontmatter += `expand: false\n`;
-          if (includeArray.length > 0) frontmatter += `include: [${includeArray.join(', ')}]\n`;
-          frontmatter += '---\n';
-          
-          const fullContent = frontmatter + args.content;
-
-          writeFileSync(filePath, fullContent, 'utf-8');
-          workflows = loadOrders(directory);
-          
-          const shortcutMsg = shortcutArray.length > 0 
-            ? `\nShortcuts: ${shortcutArray.map(a => `//${a}`).join(', ')}`
-            : '';
-          const tagMsg = tagArray.length > 0 ? `\nTags: ${tagArray.join(', ')}` : '';
-          const autoMsg = autoVal !== 'true' ? `\nAutomention: ${autoVal}` : '';
-          const onlyForMsg = onlyForArray.length > 0 ? `\nOnlyFor: ${onlyForArray.join(', ')}` : '';
-          const spawnMsg = spawnAtArray.length > 0 ? `\nSpawnAt: ${spawnAtArray.join(', ')}` : '';
-          const expandMsg = args.expand === 'false' ? `\nExpand: false (AI will fetch via tool)` : '';
-          const includeMsg = includeArray.length > 0 ? `\nInclude: ${includeArray.join(', ')}` : '';
-          return `Workflow "//${args.name}" created in ${scope} scope.\nPath: ${filePath}${shortcutMsg}${tagMsg}${autoMsg}${onlyForMsg}${spawnMsg}${expandMsg}${includeMsg}`;
-        },
-      }),
-
-      edit_workflow: tool({
-        description: 'Edit an existing workflow template. To add/modify shortcuts, include them in the YAML frontmatter (shortcuts: or aliases:).',
-        args: {
-          name: tool.schema.string().describe('The workflow name'),
-          content: tool.schema.string().describe('The new markdown content (including frontmatter if you want aliases)'),
-          scope: tool.schema.enum(['global', 'project']).describe('Scope of the workflow').optional(),
-          createIfMissing: tool.schema.boolean().describe('Create if it does not exist').optional(),
-        },
-        async execute(args) {
-          const scope = args.scope || 'global';
-          const filePath = getPromptPath(args.name, scope, 'order', directory);
-
-          if (!existsSync(filePath) && !args.createIfMissing) {
-            return `Error: Workflow "${args.name}" not found in ${scope} scope. Set createIfMissing=true to create it.`;
-          }
-
-          writeFileSync(filePath, args.content, 'utf-8');
-          workflows = loadOrders(directory);
-          return `Workflow "//${args.name}" updated successfully.`;
-        },
-      }),
-
-      delete_workflow: tool({
-        description: 'Delete a workflow template',
-        args: {
-          name: tool.schema.string().describe('The workflow name'),
-          scope: tool.schema.enum(['global', 'project']).describe('Scope of the workflow').optional(),
-        },
-        async execute(args) {
-          const scope = args.scope || 'global';
-          const filePath = getPromptPath(args.name, scope, 'order', directory);
-
-          if (!existsSync(filePath)) {
-            return `Error: Workflow "${args.name}" not found in ${scope} scope.`;
-          }
-
-          unlinkSync(filePath);
-          workflows = loadOrders(directory);
-          return `Workflow "//${args.name}" deleted successfully.`;
-        },
-      }),
-
-      rename_workflow: tool({
-        description: 'Rename an existing workflow template',
-        args: {
-          oldName: tool.schema.string().describe('The current workflow name'),
-          newName: tool.schema.string().describe('The new workflow name'),
-          scope: tool.schema.enum(['global', 'project']).describe('Scope of the workflow').optional(),
-        },
-        async execute(args) {
-          const scope = args.scope || 'global';
-          const oldPath = getPromptPath(args.oldName, scope, 'order', directory);
-          const newPath = getPromptPath(args.newName, scope, 'order', directory);
-
-          if (!existsSync(oldPath)) {
-            return `Error: Workflow "${args.oldName}" not found in ${scope} scope.`;
-          }
-
-          if (existsSync(newPath)) {
-            return `Error: Workflow "${args.newName}" already exists in ${scope} scope. Delete it first if you want to overwrite.`;
-          }
-
-          renameSync(oldPath, newPath);
-          workflows = loadOrders(directory);
-          return `Workflow renamed from "//${args.oldName}" to "//${args.newName}" successfully.`;
-        },
-      }),
-
-      reload_workflows: tool({
-        description: 'Reload all workflow templates from disk (useful after creating new ones)',
-        args: {},
-        async execute() {
-          const oldCount = workflows.size;
-          workflows = loadOrders(directory);
-          config = loadConfig();
-          const newCount = workflows.size;
-
-          const workflowList = [...workflows.keys()].map((w) => `//${w}`).join(', ') || 'none';
-          return `Workflows reloaded.\n\nPrevious: ${oldCount}\nCurrent: ${newCount}\nAvailable: ${workflowList}`;
-        },
-      }),
-
-      list_rules: tool({
-        description: 'List all available rules/constraints that are injected into the system prompt',
-        args: {
-          folder: tool.schema.string().describe('Filter by subfolder').optional(),
-          name: tool.schema.string().describe('Filter by name (partial match)').optional(),
-          scope: tool.schema.enum(['global', 'project']).describe('Filter by scope').optional(),
-        },
-        async execute(args) {
-          rules = loadRules(directory);
-          const seen = new Set<string>();
-          const filtered = [...rules.values()].filter(r => {
-            if (seen.has(r.name)) return false;
-            seen.add(r.name);
-            if (args.folder && r.folder !== args.folder) return false;
-            if (args.name && !r.name.toLowerCase().includes(args.name.toLowerCase())) return false;
-            if (args.scope && r.source !== args.scope) return false;
-            return true;
-          });
-
-          if (filtered.length === 0) {
-            return 'No rules found.\n\nHint: Create .md files in ~/.config/opencode/rules/ or .opencode/rules/';
-          }
-
-          return filtered.map(r => {
-            const agentStr = r.onlyFor.length > 0 ? ` (agents: ${r.onlyFor.join(', ')})` : ' (all agents)';
-            return `${r.name}${agentStr}: ${r.description || 'No description'}`;
-          }).join('\n');
-        },
-      }),
-
-      get_rule: tool({
-        description: 'Get the content of a specific rule',
-        args: {
-          name: tool.schema.string().describe('The rule name'),
-        },
-        async execute(args) {
-          rules = loadRules(directory);
-          const rule = rules.get(args.name);
-
-          if (!rule) {
-            const available = [...rules.keys()];
-            const availableStr = available.length > 0 ? available.join(', ') : 'none';
-            return `Rule "${args.name}" not found.\n\nAvailable: ${availableStr}`;
-          }
-
-          return `# Rule: ${rule.name}\nSource: ${rule.source}\nPath: ${rule.path}\n\n${rule.content}`;
-        },
-      }),
-
-      create_rule: tool({
-        description: 'Create a new rule (constraint) that gets silently injected into the system prompt for matching agents',
-        args: {
-          name: tool.schema.string().describe('The rule name'),
-          content: tool.schema.string().describe('The markdown content of the rule'),
-          scope: tool.schema.enum(['global', 'project']).describe('Where to save').optional(),
-          description: tool.schema.string().describe('Short description of the rule').optional(),
-          onlyFor: tool.schema.string().describe('Comma-separated agent names this rule applies to. Empty = all agents').optional(),
-        },
-        async execute(args) {
-          const scope = args.scope || 'global';
-          const filePath = getPromptPath(args.name, scope, 'rule', directory);
-
-          if (existsSync(filePath)) {
-            return `Error: Rule "${args.name}" already exists. Use edit_rule to modify it.`;
-          }
-
-          const onlyForArray = args.onlyFor ? args.onlyFor.split(',').map(a => a.trim()).filter(a => a) : [];
-
-          let frontmatter = '---\n';
-          if (args.description) frontmatter += `description: "${args.description}"\n`;
-          if (onlyForArray.length > 0) frontmatter += `onlyFor: [${onlyForArray.join(', ')}]\n`;
-          frontmatter += '---\n\n';
-
-          const fullContent = frontmatter + args.content;
-          writeFileSync(filePath, fullContent, 'utf-8');
-          rules = loadRules(directory);
-
-          const agentMsg = onlyForArray.length > 0 ? `\nApplies to: ${onlyForArray.join(', ')}` : '\nApplies to: all agents';
-          return `Rule "${args.name}" created in ${scope} scope.\nPath: ${filePath}${agentMsg}`;
-        },
-      }),
-
-      edit_rule: tool({
-        description: 'Edit an existing rule',
-        args: {
-          name: tool.schema.string().describe('The rule name'),
-          content: tool.schema.string().describe('The new markdown content (including frontmatter)'),
-          scope: tool.schema.enum(['global', 'project']).describe('Scope of the rule').optional(),
-          createIfMissing: tool.schema.boolean().describe('Create if it does not exist').optional(),
-        },
-        async execute(args) {
-          const scope = args.scope || 'global';
-          const filePath = getPromptPath(args.name, scope, 'rule', directory);
-
-          if (!existsSync(filePath) && !args.createIfMissing) {
-            return `Error: Rule "${args.name}" not found. Set createIfMissing=true to create it.`;
-          }
-
-          writeFileSync(filePath, args.content, 'utf-8');
-          rules = loadRules(directory);
-          return `Rule "${args.name}" updated successfully.`;
-        },
-      }),
-
-      delete_rule: tool({
-        description: 'Delete a rule',
-        args: {
-          name: tool.schema.string().describe('The rule name'),
-          scope: tool.schema.enum(['global', 'project']).describe('Scope of the rule').optional(),
-        },
-        async execute(args) {
-          const scope = args.scope || 'global';
-          const filePath = getPromptPath(args.name, scope, 'rule', directory);
-
-          if (!existsSync(filePath)) {
-            return `Error: Rule "${args.name}" not found in ${scope} scope.`;
-          }
-
-          unlinkSync(filePath);
-          rules = loadRules(directory);
-          return `Rule "${args.name}" deleted successfully.`;
-        },
-      }),
-
-      reload_rules: tool({
-        description: 'Reload all rules from disk',
-        args: {},
-        async execute() {
-          const oldCount = rules.size;
-          rules = loadRules(directory);
-          const newCount = rules.size;
-
-          const ruleList = [...new Set([...rules.values()].map(r => r.name))].join(', ') || 'none';
-          return `Rules reloaded.\n\nPrevious: ${oldCount}\nCurrent: ${newCount}\nAvailable: ${ruleList}`;
-        },
-      }),
-
-      list_crew: tool({
-        description: 'List all available crew agents that can be invoked via the Task tool',
-        args: {
-          folder: tool.schema.string().describe('Filter by subfolder').optional(),
-          name: tool.schema.string().describe('Filter by name (partial match)').optional(),
-          scope: tool.schema.enum(['global', 'project']).describe('Filter by scope').optional(),
-        },
-        async execute(args) {
-          crews = loadCrews(directory);
-          const seen = new Set<string>();
-          const filtered = [...crews.values()].filter(c => {
-            if (seen.has(c.name)) return false;
-            seen.add(c.name);
-            if (args.folder && c.folder !== args.folder) return false;
-            if (args.name && !c.name.toLowerCase().includes(args.name.toLowerCase())) return false;
-            if (args.scope && c.source !== args.scope) return false;
-            return true;
-          });
-
-          if (filtered.length === 0) {
-            return 'No crew found.\n\nHint: Create .md files in ~/.config/opencode/crew/ or .opencode/crew/';
-          }
-
-          return filtered.map(c => {
-            const modeStr = c.mode === 'agent' ? '[agent]' : '[subagent]';
-            const modelStr = c.model ? ` model=${c.model}` : '';
-            const toolsStr = c.tools && c.tools.length > 0 ? ` tools=${c.tools.join(',')}` : '';
-            return `${c.name} ${modeStr}${modelStr}${toolsStr}: ${c.description || 'No description'}`;
-          }).join('\n');
-        },
-      }),
-
-      get_crew: tool({
-        description: 'Get the content of a specific crew agent definition',
-        args: {
-          name: tool.schema.string().describe('The crew name'),
-        },
-        async execute(args) {
-          crews = loadCrews(directory);
-          const crew = crews.get(args.name);
-
-          if (!crew) {
-            const available = [...crews.keys()];
-            const availableStr = available.length > 0 ? available.join(', ') : 'none';
-            return `Crew "${args.name}" not found.\n\nAvailable: ${availableStr}`;
-          }
-
-          const modeStr = crew.mode === 'agent' ? 'agent' : 'subagent';
-          const modelStr = crew.model ? `\nModel: ${crew.model}` : '';
-          const tempStr = crew.temperature !== undefined ? `\nTemperature: ${crew.temperature}` : '';
-          const toolsStr = crew.tools && crew.tools.length > 0 ? `\nTools: ${crew.tools.join(', ')}` : '';
-          
-          return `# Crew: ${crew.name}\nSource: ${crew.source}\nMode: ${modeStr}${modelStr}${tempStr}${toolsStr}\nPath: ${crew.path}\n\n${crew.content}`;
-        },
-      }),
-
-      create_crew: tool({
-        description: 'Create a new crew agent definition. Crews are markdown files that define agents invokable via the Task tool.',
-        args: {
-          name: tool.schema.string().describe('The crew name'),
-          content: tool.schema.string().describe('The markdown content (system prompt for the agent)'),
-          scope: tool.schema.enum(['global', 'project']).describe('Where to save').optional(),
-          description: tool.schema.string().describe('Short description of the crew').optional(),
-          model: tool.schema.string().describe('Model to use (e.g., "claude-3-opus", "gpt-4")').optional(),
-          temperature: tool.schema.number().describe('Temperature setting (0-1)').optional(),
-          tools: tool.schema.string().describe('Comma-separated list of tools to enable').optional(),
-          mode: tool.schema.enum(['agent', 'subagent']).describe('Agent mode: agent (top-level) or subagent (delegated)').optional(),
-          onlyFor: tool.schema.string().describe('Comma-separated agent names this crew is visible to').optional(),
-        },
-        async execute(args) {
-          const scope = args.scope || 'global';
-          const filePath = getPromptPath(args.name, scope, 'crew', directory);
-
-          if (existsSync(filePath)) {
-            return `Error: Crew "${args.name}" already exists. Use edit_crew to modify it.`;
-          }
-
-          const onlyForArray = args.onlyFor ? args.onlyFor.split(',').map(a => a.trim()).filter(a => a) : [];
-          const toolsArray = args.tools ? args.tools.split(',').map(t => t.trim()).filter(t => t) : [];
-
-          let frontmatter = '---\n';
-          if (args.description) frontmatter += `description: "${args.description}"\n`;
-          if (args.model) frontmatter += `model: ${args.model}\n`;
-          if (args.temperature !== undefined) frontmatter += `temperature: ${args.temperature}\n`;
-          if (toolsArray.length > 0) frontmatter += `tools: [${toolsArray.join(', ')}]\n`;
-          if (args.mode) frontmatter += `mode: ${args.mode}\n`;
-          if (onlyForArray.length > 0) frontmatter += `onlyFor: [${onlyForArray.join(', ')}]\n`;
-          frontmatter += '---\n\n';
-
-          const fullContent = frontmatter + args.content;
-          writeFileSync(filePath, fullContent, 'utf-8');
-          crews = loadCrews(directory);
-
-          const modeMsg = args.mode ? `\nMode: ${args.mode}` : '\nMode: subagent (default)';
-          const modelMsg = args.model ? `\nModel: ${args.model}` : '';
-          return `Crew "${args.name}" created in ${scope} scope.\nPath: ${filePath}${modeMsg}${modelMsg}`;
-        },
-      }),
-
-      edit_crew: tool({
-        description: 'Edit an existing crew agent definition',
-        args: {
-          name: tool.schema.string().describe('The crew name'),
-          content: tool.schema.string().describe('The new markdown content (including frontmatter)'),
-          scope: tool.schema.enum(['global', 'project']).describe('Scope of the crew').optional(),
-          createIfMissing: tool.schema.boolean().describe('Create if it does not exist').optional(),
-        },
-        async execute(args) {
-          const scope = args.scope || 'global';
-          const filePath = getPromptPath(args.name, scope, 'crew', directory);
-
-          if (!existsSync(filePath) && !args.createIfMissing) {
-            return `Error: Crew "${args.name}" not found. Set createIfMissing=true to create it.`;
-          }
-
-          writeFileSync(filePath, args.content, 'utf-8');
-          crews = loadCrews(directory);
-          return `Crew "${args.name}" updated successfully.`;
-        },
-      }),
-
-      delete_crew: tool({
-        description: 'Delete a crew agent definition',
-        args: {
-          name: tool.schema.string().describe('The crew name'),
-          scope: tool.schema.enum(['global', 'project']).describe('Scope of the crew').optional(),
-        },
-        async execute(args) {
-          const scope = args.scope || 'global';
-          const filePath = getPromptPath(args.name, scope, 'crew', directory);
-
-          if (!existsSync(filePath)) {
-            return `Error: Crew "${args.name}" not found in ${scope} scope.`;
-          }
-
-          unlinkSync(filePath);
-          crews = loadCrews(directory);
-          return `Crew "${args.name}" deleted successfully.`;
-        },
-      }),
-
-      reload_crew: tool({
-        description: 'Reload all crew agent definitions from disk',
-        args: {},
-        async execute() {
-          const oldCount = crews.size;
-          crews = loadCrews(directory);
-          const newCount = crews.size;
-
-          const crewList = [...new Set([...crews.values()].map(c => c.name))].join(', ') || 'none';
-          return `Crew reloaded.\n\nPrevious: ${oldCount}\nCurrent: ${newCount}\nAvailable: ${crewList}`;
-        },
-      }),
+    }),
     },
   };
 };
