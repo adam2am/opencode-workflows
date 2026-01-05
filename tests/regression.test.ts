@@ -112,13 +112,87 @@ describe('Bug Fixes Regression Tests', () => {
       path: '/path'
     };
 
-    test('should NOT trigger when text looks like a mention but has space', () => {
+    test('SHOULD trigger automention when tags match, even with "// " prefix', () => {
       const result = findMatchingAutoWorkflows(
         '// 5 approaches', 
         [workflow]
       );
 
-      expect(result.autoApply).not.toContain('5-approaches');
+      // "5" and "approaches" are valid tags - automention should trigger
+      // The tokenizer already rejects "// name" as explicit workflow syntax
+      // So this won't expand inline, but WILL trigger automention hint
+      expect(result.autoApply).toContain('5-approaches');
+    });
+  });
+
+  describe('Bug 3b: Code comments blocking legitimate tag matches', () => {
+    const workflow: Workflow = {
+      promptType: 'scroll',
+      name: '5-approaches',
+      aliases: ['5a', 'approaches'],
+      tags: [['5', 'approaches'], 'think', 'analyze', 'brainstorm', 'ideas', 'design', 'perspectives'],
+      onlyFor: [],
+      spawnFor: [],
+      description: 'Analyze from 5 perspectives',
+      automention: 'true',
+      scrollInScroll: 'false',
+      expand: true,
+      include: [],
+      includeWarnings: [],
+      content: 'content',
+      source: 'global',
+      path: '/path'
+    };
+
+    test('EDGE CASE: should trigger when message contains code comments + legitimate tags', () => {
+      // This is the REAL user message that failed to trigger
+      const userMessage = `think as linus twoarld is our changes are superior? 1-10
+and this is necessary or not?
+Recommendation: Consider adding error handling to your uriToPath() helper:
+export function uriToPath(uri: string): string {
+  try {
+    return fileURLToPath(uri)
+  } catch (err) {
+    // LSP servers should always return valid file:// URIs
+    // but log if we encounter invalid ones
+    console.warn(Invalid file URI from LSP: , err)
+    // Fallback to naive replacement as last resort
+    return uri.replace("file://", "")
+  }
+}
+However, if LSP servers are guaranteed to return valid URIs (which they should), the simpler implementation without error handling is also acceptable. 
+think 5 approaches`;
+
+      const result = findMatchingAutoWorkflows(userMessage, [workflow]);
+
+      // Message contains "think" + "5" + "approaches" - should match!
+      // Bug: the "// LSP servers" comment causes early-exit
+      expect(result.autoApply).toContain('5-approaches');
+    });
+
+    test('should NOT block when code has // comments but user text has matching tags', () => {
+      const messageWithComments = `
+Please analyze this code:
+\`\`\`ts
+// This is a comment
+function foo() {
+  // Another comment
+}
+\`\`\`
+think 5 approaches please`;
+
+      const result = findMatchingAutoWorkflows(messageWithComments, [workflow]);
+      expect(result.autoApply).toContain('5-approaches');
+    });
+
+    test('"// 5 approaches" SHOULD trigger automention (tags match)', () => {
+      const result = findMatchingAutoWorkflows(
+        '// 5 approaches',
+        [workflow]
+      );
+      // Tags "5" and "approaches" match - automention should fire
+      // Explicit expansion is blocked by tokenizer (requires no space after //)
+      expect(result.autoApply).toContain('5-approaches');
     });
   });
 

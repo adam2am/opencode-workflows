@@ -1,6 +1,6 @@
 {
   "name": "opencode-captain",
-  "version": "1.0.0",
+  "version": "1.5.0",
   "description": "Captain your AI with Orders (//workflows), Rules (silent constraints), and Crews (agent definitions)",
   "type": "module",
   "main": "dist/index.js",
@@ -10,6 +10,9 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/adam2am/opencode-workflows"
+  },
+  "bin": {
+    "captain": "./bin/captain.ts"
   },
   "keywords": [
     "opencode",
@@ -27,6 +30,8 @@
   ],
   "files": [
     "dist",
+    "bin",
+    "scrolls",
     "README.md",
     "LICENSE"
   ],

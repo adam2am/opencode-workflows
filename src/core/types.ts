@@ -29,6 +29,8 @@ export type TagEntry = string | (string | TagOrGroup)[] | TagOrGroup | SequenceT
 
 export type PromptType = 'scroll' | 'order' | 'rule' | 'crew';
 
+export type PromptSource = 'project' | 'global' | 'bundled';
+
 /**
  * Base interface for all prompt types (orders, rules, crew).
  * Shared fields that appear in all prompt markdown files.
@@ -40,7 +42,7 @@ export interface BasePrompt {
   tags: TagEntry[];
   onlyFor: string[];           // Agent visibility filter
   content: string;
-  source: 'project' | 'global';
+  source: PromptSource;
   path: string;
   folder?: string;             // Subfolder for organization
   promptType: PromptType;      // Derived from folder location
@@ -82,9 +84,23 @@ export interface PluginEvent {
 
 export type Theme = 'pirate' | 'standard';
 
+/**
+ * Tool profile defining which tools to enable/disable.
+ */
+export interface ToolProfile {
+  mode?: 'allowlist' | 'blocklist';  // default: blocklist
+  allowed?: string[];   // for allowlist mode (supports globs: serena_*, lsp_*)
+  disabled?: string[];  // for blocklist mode
+  enabled?: string[];   // for blocklist mode overrides
+}
+
 export interface CaptainConfig {
   deduplicateSameMessage: boolean;
   maxNestingDepth: number;
   expandOrders: boolean;
   theme?: Theme;
+  
+  // Tool Policy System
+  toolProfiles?: Record<string, ToolProfile>;
+  defaultToolPolicy?: string;
 }

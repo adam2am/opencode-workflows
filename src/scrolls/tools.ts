@@ -6,7 +6,8 @@ import {
   deletePrompt, 
   renamePromptFile, 
   promptExists,
-  getPromptPath
+  getPromptPath,
+  toWritableScope
 } from '../core/storage';
 import { loadConfig, detectTheme } from '../core/config';
 import { expandVariables } from '../core/variables';
@@ -178,7 +179,7 @@ export function editScroll(state: OrdersState, params: EditScrollParams): string
     throw new Error(`Scroll "${params.name}" not found`);
   }
   
-  const scope = params.scope || existingScroll.source;
+  const scope = toWritableScope(params.scope || existingScroll.source);
   const filePath = savePrompt(params.name, params.content, scope, 'scroll', state.projectDir);
   
   reloadScrolls(state);
@@ -210,7 +211,7 @@ export function renameScroll(state: OrdersState, params: RenameScrollParams): st
     throw new Error(`Scroll "${params.oldName}" not found`);
   }
   
-  const scope = params.scope || scroll.source;
+  const scope = toWritableScope(params.scope || scroll.source);
   const newPath = getPromptPath(params.newName, scope, 'scroll', state.projectDir);
   
   if (promptExists(newPath)) {

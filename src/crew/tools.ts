@@ -6,7 +6,8 @@ import {
   deletePrompt, 
   renamePromptFile, 
   promptExists,
-  getPromptPath
+  getPromptPath,
+  toWritableScope
 } from '../core/storage';
 import { loadConfig, detectTheme } from '../core/config';
 import { parseCrewFrontmatter } from './parser';
@@ -36,6 +37,8 @@ export function loadCrews(projectDir: string): Map<string, Crew> {
       temperature: parsed.temperature,
       tools: parsed.tools,
       mode: parsed.mode || 'subagent',
+      spawnWith: parsed.spawnWith,
+      toolPolicy: parsed.toolPolicy,
     };
   });
 }
@@ -135,7 +138,7 @@ export function editCrew(state: CrewsState, params: EditCrewParams): string {
     throw new Error(`Crew "${params.name}" not found`);
   }
   
-  const scope = params.scope || existingCrew.source;
+  const scope = toWritableScope(params.scope || existingCrew.source);
   const filePath = savePrompt(params.name, params.content, scope, 'crew', state.projectDir);
   
   reloadCrews(state);
@@ -164,7 +167,7 @@ export function renameCrew(state: CrewsState, params: RenameCrewParams): string 
     throw new Error(`Crew "${params.oldName}" not found`);
   }
   
-  const scope = params.scope || crew.source;
+  const scope = toWritableScope(params.scope || crew.source);
   const newPath = getPromptPath(params.newName, scope, 'crew', state.projectDir);
   
   if (promptExists(newPath)) {

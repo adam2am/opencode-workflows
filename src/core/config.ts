@@ -33,12 +33,25 @@ export function loadConfig(): CaptainConfig {
     }
 
     const json = JSON.parse(content);
-    return {
+    const config: CaptainConfig = {
       deduplicateSameMessage: json.deduplicateSameMessage ?? true,
       maxNestingDepth: json.maxNestingDepth ?? 3,
       expandOrders: json.expandOrders ?? true,
       theme: json.theme,
+      toolProfiles: json.toolProfiles,
+      defaultToolPolicy: json.defaultToolPolicy,
     };
+    
+    // Validate: warn if defaultToolPolicy references non-existent profile
+    if (config.defaultToolPolicy && config.toolProfiles) {
+      if (!config.toolProfiles[config.defaultToolPolicy]) {
+        console.warn(`[captain] Warning: defaultToolPolicy "${config.defaultToolPolicy}" not found in toolProfiles`);
+      }
+    } else if (config.defaultToolPolicy && !config.toolProfiles) {
+      console.warn(`[captain] Warning: defaultToolPolicy "${config.defaultToolPolicy}" set but no toolProfiles defined`);
+    }
+    
+    return config;
   } catch (err) {
     console.error(`[captain] Failed to load config: ${err instanceof Error ? err.message : err}`);
   }

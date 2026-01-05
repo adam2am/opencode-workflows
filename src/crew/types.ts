@@ -8,6 +8,8 @@ export interface Crew extends BasePrompt {
   temperature?: number;
   tools?: string[];
   mode: CrewMode;
+  spawnWith?: string[];
+  toolPolicy?: string | null;
 }
 
 export interface ParsedCrewFrontmatter {
@@ -20,4 +22,6 @@ export interface ParsedCrewFrontmatter {
   temperature?: number;
   tools?: string[];
   mode?: CrewMode;
+  spawnWith?: string[];
+  toolPolicy?: string | null;
 }

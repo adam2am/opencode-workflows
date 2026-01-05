@@ -6,7 +6,8 @@ import {
   deletePrompt, 
   renamePromptFile, 
   promptExists,
-  getPromptPath
+  getPromptPath,
+  toWritableScope
 } from '../core/storage';
 import { loadConfig, detectTheme } from '../core/config';
 import { parseRuleFrontmatter } from './parser';
@@ -123,7 +124,7 @@ export function editRule(state: RulesState, params: EditRuleParams): string {
     throw new Error(`Rule "${params.name}" not found`);
   }
   
-  const scope = params.scope || existingRule.source;
+  const scope = toWritableScope(params.scope || existingRule.source);
   const filePath = savePrompt(params.name, params.content, scope, 'rule', state.projectDir);
   
   reloadRules(state);
@@ -152,7 +153,7 @@ export function renameRule(state: RulesState, params: RenameRuleParams): string 
     throw new Error(`Rule "${params.oldName}" not found`);
   }
   
-  const scope = params.scope || rule.source;
+  const scope = toWritableScope(params.scope || rule.source);
   const newPath = getPromptPath(params.newName, scope, 'rule', state.projectDir);
   
   if (promptExists(newPath)) {

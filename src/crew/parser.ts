@@ -10,6 +10,15 @@ function parseToolsField(raw: unknown): string[] | undefined {
   return undefined;
 }
 
+function parseSpawnWithField(raw: unknown): string[] | undefined {
+  if (!raw) return undefined;
+  if (Array.isArray(raw)) return raw.map(String).map(s => s.trim()).filter(Boolean);
+  if (typeof raw === 'string') {
+    return raw.split(',').map(s => s.trim()).filter(Boolean);
+  }
+  return undefined;
+}
+
 function parseMode(raw: unknown): CrewMode | undefined {
   if (raw === 'agent' || raw === 'subagent') return raw;
   return undefined;
@@ -39,6 +48,8 @@ export function parseCrewFrontmatter(fileContent: string): ParsedCrewFrontmatter
     temperature: parseTemperature(rawFrontmatter.temperature),
     tools: parseToolsField(rawFrontmatter.tools),
     mode: parseMode(rawFrontmatter.mode),
+    spawnWith: parseSpawnWithField(rawFrontmatter.spawnWith),
+    toolPolicy: rawFrontmatter.toolPolicy === null ? null : (typeof rawFrontmatter.toolPolicy === 'string' ? rawFrontmatter.toolPolicy : undefined),
   };
 }
 
@@ -64,6 +75,8 @@ function extractRawFrontmatter(content: string): Record<string, unknown> {
       result[key] = value.slice(1, -1);
     } else if (!isNaN(Number(value)) && value !== '') {
       result[key] = Number(value);
+    } else if (value === 'null' || value === '~') {
+      result[key] = null;
     } else {
       result[key] = value;
     }

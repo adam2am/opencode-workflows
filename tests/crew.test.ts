@@ -69,6 +69,24 @@ Content`;
   });
 });
 
+  test('parses spawnWith field', () => {
+    const md = `---
+spawnWith: [//workflow-a, //workflow-b]
+---
+Content`;
+    const result = parseCrewFrontmatter(md);
+    expect(result.spawnWith).toEqual(['//workflow-a', '//workflow-b']);
+  });
+
+  test('parses spawnWith as string', () => {
+    const md = `---
+spawnWith: //workflow-a, //workflow-b
+---
+Content`;
+    const result = parseCrewFrontmatter(md);
+    expect(result.spawnWith).toEqual(['//workflow-a', '//workflow-b']);
+  });
+
 describe('crewToAgentConfig', () => {
   test('converts minimal crew to AgentConfig', () => {
     const crew: Crew = {
@@ -134,6 +152,26 @@ describe('crewToAgentConfig', () => {
     expect(config.description).toBe('(global) no-desc');
   });
 });
+
+  test('injects spawnWith context into prompt', () => {
+    const crew: Crew = {
+      name: 'context-crew',
+      path: '/path/context.md',
+      source: 'project',
+      content: 'Original prompt',
+      description: 'Context crew',
+      aliases: [],
+      tags: [],
+      onlyFor: [],
+      promptType: 'crew',
+      mode: 'subagent',
+      spawnWith: ['//workflow-a', '//workflow-b'],
+    };
+    const config = crewToAgentConfig(crew);
+    expect(config.prompt).toContain('Original prompt');
+    expect(config.prompt).toContain('[Auto-injected context: //workflow-a]');
+    expect(config.prompt).toContain('[Auto-injected context: //workflow-b]');
+  });
 
 describe('crewsToAgentConfigs', () => {
   test('converts multiple crews to config map', () => {
@@ -403,5 +441,313 @@ describe('crews mode defaults', () => {
     };
     const config = crewToAgentConfig(crew);
     expect(config.mode).toBe('agent');
+  });
+});
+
+
+describe('tool policy system', () => {
+  const baseCrew: Crew = {
+    name: 'test-crew',
+    path: '/path/test.md',
+    source: 'global',
+    content: 'Test content',
+    description: 'Test crew',
+    aliases: [],
+    tags: [],
+    onlyFor: [],
+    promptType: 'crew',
+    mode: 'subagent',
+  };
+
+  describe('crewToAgentConfig with tool policies', () => {
+    test('applies tool profile from captainConfig', () => {
+      const crew: Crew = { ...baseCrew };
+      const captainConfig = {
+        deduplicateSameMessage: true,
+        maxNestingDepth: 3,
+        expandOrders: true,
+        toolProfiles: {
+          restricted: { disabled: ['bash', 'write', 'edit'] },
+        },
+        defaultToolPolicy: 'restricted',
+      };
+      
+      const config = crewToAgentConfig(crew, captainConfig);
+      expect(config.tools).toEqual({ bash: false, write: false, edit: false });
+    });
+
+    test('crew toolPolicy overrides defaultToolPolicy', () => {
+      const crew: Crew = { ...baseCrew, toolPolicy: 'full' };
+      const captainConfig = {
+        deduplicateSameMessage: true,
+        maxNestingDepth: 3,
+        expandOrders: true,
+        toolProfiles: {
+          restricted: { disabled: ['bash', 'write', 'edit'] },
+          full: { disabled: [] },
+        },
+        defaultToolPolicy: 'restricted',
+      };
+      
+      const config = crewToAgentConfig(crew, captainConfig);
+      expect(config.tools).toBeUndefined(); // full profile has no disabled tools
+    });
+
+    test('crew tools override policy', () => {
+      const crew: Crew = { ...baseCrew, tools: ['read', 'glob', 'write'] };
+      const captainConfig = {
+        deduplicateSameMessage: true,
+        maxNestingDepth: 3,
+        expandOrders: true,
+        toolProfiles: {
+          restricted: { disabled: ['bash', 'write', 'edit'] },
+        },
+        defaultToolPolicy: 'restricted',
+      };
+      
+      const config = crewToAgentConfig(crew, captainConfig);
+      // Policy disables write, but crew tools re-enable it
+      expect(config.tools?.bash).toBe(false);
+      expect(config.tools?.edit).toBe(false);
+      expect(config.tools?.write).toBe(true);
+      expect(config.tools?.read).toBe(true);
+      expect(config.tools?.glob).toBe(true);
+    });
+
+    test('supports !toolname syntax to disable tools', () => {
+      const crew: Crew = { ...baseCrew, tools: ['read', '!bash', '!write'] };
+      
+      const config = crewToAgentConfig(crew);
+      expect(config.tools?.read).toBe(true);
+      expect(config.tools?.bash).toBe(false);
+      expect(config.tools?.write).toBe(false);
+    });
+
+    test('profile enabled overrides disabled', () => {
+      const crew: Crew = { ...baseCrew, toolPolicy: 'mixed' };
+      const captainConfig = {
+        deduplicateSameMessage: true,
+        maxNestingDepth: 3,
+        expandOrders: true,
+        toolProfiles: {
+          mixed: { 
+            disabled: ['bash', 'write', 'edit'],
+            enabled: ['write'],  // Re-enable write
+          },
+        },
+      };
+      
+      const config = crewToAgentConfig(crew, captainConfig);
+      expect(config.tools?.bash).toBe(false);
+      expect(config.tools?.edit).toBe(false);
+      expect(config.tools?.write).toBe(true);
+    });
+
+    test('no tools when no policy and no crew tools', () => {
+      const crew: Crew = { ...baseCrew };
+      const captainConfig = {
+        deduplicateSameMessage: true,
+        maxNestingDepth: 3,
+        expandOrders: true,
+      };
+      
+      const config = crewToAgentConfig(crew, captainConfig);
+      expect(config.tools).toBeUndefined();
+    });
+
+    test('ignores non-existent policy', () => {
+      const crew: Crew = { ...baseCrew, toolPolicy: 'nonexistent' };
+      const captainConfig = {
+        deduplicateSameMessage: true,
+        maxNestingDepth: 3,
+        expandOrders: true,
+        toolProfiles: {
+          restricted: { disabled: ['bash'] },
+        },
+      };
+      
+      const config = crewToAgentConfig(crew, captainConfig);
+      expect(config.tools).toBeUndefined();
+    });
+  });
+
+  describe('parseCrewFrontmatter with toolPolicy', () => {
+    test('parses toolPolicy field', () => {
+      const md = `---
+description: "Test crew"
+toolPolicy: restricted
+---
+Content`;
+      const result = parseCrewFrontmatter(md);
+      expect(result.toolPolicy).toBe('restricted');
+    });
+
+    test('toolPolicy is undefined when not specified', () => {
+      const md = `---
+description: "Test crew"
+---
+Content`;
+      const result = parseCrewFrontmatter(md);
+      expect(result.toolPolicy).toBeUndefined();
+    });
+  });
+
+  describe('registerCrewsWithConfig with captainConfig', () => {
+    test('passes captainConfig to crewsToAgentConfigs', () => {
+      const crews = new Map<string, Crew>([
+        ['test-crew', { ...baseCrew }],
+      ]);
+      const captainConfig = {
+        deduplicateSameMessage: true,
+        maxNestingDepth: 3,
+        expandOrders: true,
+        toolProfiles: {
+          restricted: { disabled: ['bash', 'write'] },
+        },
+        defaultToolPolicy: 'restricted',
+      };
+      
+      const result = registerCrewsWithConfig(crews, undefined, captainConfig);
+      const crewConfig = result['test-crew'] as any;
+      expect(crewConfig.tools).toEqual({ bash: false, write: false });
+    });
+  });
+
+  describe('allowlist mode', () => {
+    const allTools = ['read', 'write', 'edit', 'bash', 'glob', 'grep', 'webfetch', 
+                      'serena_find_symbol', 'serena_get_symbols_overview', 'serena_search_for_pattern',
+                      'lsp_hover', 'lsp_find_references', 'lsp_document_symbols',
+                      'context7_resolve-library-id', 'context7_query-docs'];
+
+    test('allowlist mode denies all except allowed', () => {
+      const crew: Crew = { ...baseCrew, toolPolicy: 'minimal' };
+      const captainConfig = {
+        deduplicateSameMessage: true,
+        maxNestingDepth: 3,
+        expandOrders: true,
+        toolProfiles: {
+          minimal: { 
+            mode: 'allowlist' as const,
+            allowed: ['read', 'glob', 'grep'] 
+          },
+        },
+      };
+      
+      const config = crewToAgentConfig(crew, captainConfig, allTools);
+      expect(config.tools?.read).toBe(true);
+      expect(config.tools?.glob).toBe(true);
+      expect(config.tools?.grep).toBe(true);
+      expect(config.tools?.write).toBe(false);
+      expect(config.tools?.edit).toBe(false);
+      expect(config.tools?.bash).toBe(false);
+    });
+
+    test('allowlist supports glob patterns', () => {
+      const crew: Crew = { ...baseCrew, toolPolicy: 'serena_only' };
+      const captainConfig = {
+        deduplicateSameMessage: true,
+        maxNestingDepth: 3,
+        expandOrders: true,
+        toolProfiles: {
+          serena_only: { 
+            mode: 'allowlist' as const,
+            allowed: ['read', 'serena_*'] 
+          },
+        },
+      };
+      
+      const config = crewToAgentConfig(crew, captainConfig, allTools);
+      expect(config.tools?.read).toBe(true);
+      expect(config.tools?.serena_find_symbol).toBe(true);
+      expect(config.tools?.serena_get_symbols_overview).toBe(true);
+      expect(config.tools?.serena_search_for_pattern).toBe(true);
+      expect(config.tools?.lsp_hover).toBe(false);
+      expect(config.tools?.write).toBe(false);
+    });
+
+    test('allowlist with !pattern excludes from allowed', () => {
+      const crew: Crew = { ...baseCrew, toolPolicy: 'lsp_no_rename' };
+      const captainConfig = {
+        deduplicateSameMessage: true,
+        maxNestingDepth: 3,
+        expandOrders: true,
+        toolProfiles: {
+          lsp_no_rename: { 
+            mode: 'allowlist' as const,
+            allowed: ['read', 'lsp_*', '!lsp_find_references'] 
+          },
+        },
+      };
+      
+      const config = crewToAgentConfig(crew, captainConfig, allTools);
+      expect(config.tools?.read).toBe(true);
+      expect(config.tools?.lsp_hover).toBe(true);
+      expect(config.tools?.lsp_document_symbols).toBe(true);
+      expect(config.tools?.lsp_find_references).toBe(false);
+    });
+
+    test('crew tools can add to allowlist', () => {
+      const crew: Crew = { ...baseCrew, toolPolicy: 'minimal', tools: ['webfetch', 'context7_*'] };
+      const captainConfig = {
+        deduplicateSameMessage: true,
+        maxNestingDepth: 3,
+        expandOrders: true,
+        toolProfiles: {
+          minimal: { 
+            mode: 'allowlist' as const,
+            allowed: ['read', 'glob'] 
+          },
+        },
+      };
+      
+      const config = crewToAgentConfig(crew, captainConfig, allTools);
+      expect(config.tools?.read).toBe(true);
+      expect(config.tools?.glob).toBe(true);
+      expect(config.tools?.webfetch).toBe(true);
+      expect(config.tools?.['context7_*']).toBe(true);
+    });
+
+    test('blocklist mode with glob patterns', () => {
+      const crew: Crew = { ...baseCrew, toolPolicy: 'no_lsp' };
+      const captainConfig = {
+        deduplicateSameMessage: true,
+        maxNestingDepth: 3,
+        expandOrders: true,
+        toolProfiles: {
+          no_lsp: { 
+            mode: 'blocklist' as const,
+            disabled: ['lsp_*'] 
+          },
+        },
+      };
+      
+      const config = crewToAgentConfig(crew, captainConfig, allTools);
+      expect(config.tools?.lsp_hover).toBe(false);
+      expect(config.tools?.lsp_find_references).toBe(false);
+      expect(config.tools?.lsp_document_symbols).toBe(false);
+      expect(config.tools?.read).toBeUndefined();
+    });
+
+    test('new tools are auto-denied in allowlist mode', () => {
+      const crew: Crew = { ...baseCrew, toolPolicy: 'minimal' };
+      const captainConfig = {
+        deduplicateSameMessage: true,
+        maxNestingDepth: 3,
+        expandOrders: true,
+        toolProfiles: {
+          minimal: { 
+            mode: 'allowlist' as const,
+            allowed: ['read', 'glob'] 
+          },
+        },
+      };
+      
+      const allToolsWithNew = [...allTools, 'new_plugin_tool', 'another_new_tool'];
+      
+      const config = crewToAgentConfig(crew, captainConfig, allToolsWithNew);
+      expect(config.tools?.new_plugin_tool).toBe(false);
+      expect(config.tools?.another_new_tool).toBe(false);
+      expect(config.tools?.read).toBe(true);
+    });
   });
 });

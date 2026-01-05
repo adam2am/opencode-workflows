@@ -1,13 +1,19 @@
 # Patchlog
 
-## [1.1.1] - 2026-01-05
+## [1.5.0] - 2026-01-05
+
+### Added
+- **Tool Policy System**: Fine-grained control over agent tools via `toolProfiles` (allowlist/blocklist, glob patterns like `serena_*`)
+- **Captain CLI**: Native `captain` command for managing resources (workflows, rules, crews)
+- **Spawn Context**: New `spawnWith` property for Crews to auto-inject workflow context
+- **Bundled Workflows**: Support for built-in workflows (like `captain-manager`)
 
 ### Changed
-- Improved automention hint format: now uses \`// name\` (with space) and inline descriptions for cleaner UI
+- Improved automention hint format: now uses \`// name\` (with space) and inline descriptions
 - Updated system prompts to prioritize the \`captain\` CLI for resource management
 
 ### Fixed
-- Captain Manager workflow now correctly appears in auto-suggestions when managing resources
+- Captain Manager workflow visibility in auto-suggestions
 
 ## [1.1.0] - 2025-12-28
 

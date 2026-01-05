@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, renameSync, statSync } from 'fs';
-import { join, basename, relative } from 'path';
+import { join, basename, relative, dirname } from 'path';
 import { homedir } from 'os';
-import type { PromptType, BasePrompt } from './types';
+import type { PromptType, BasePrompt, PromptSource } from './types';
 import { parseBaseFrontmatter } from './parser';
 
 export const FOLDER_ALIASES: Record<PromptType, string[]> = {
@@ -11,9 +11,12 @@ export const FOLDER_ALIASES: Record<PromptType, string[]> = {
   crew: ['crew', 'agents', 'mates'],
 };
 
+// Plugin root directory (where this code lives)
+const PLUGIN_ROOT = join(dirname(dirname(__dirname)));
+
 export interface PromptDir {
   path: string;
-  source: 'project' | 'global';
+  source: PromptSource;
   folderName: string;
 }
 
@@ -31,10 +34,20 @@ export function getPromptDirs(projectDir: string, promptType: PromptType): Promp
     if (existsSync(projectPath)) {
       dirs.push({ path: projectPath, source: 'project', folderName: alias });
     }
-    
+  }
+  
+  for (const alias of aliases) {
     const globalPath = join(homedir(), '.config', 'opencode', alias);
     if (existsSync(globalPath)) {
       dirs.push({ path: globalPath, source: 'global', folderName: alias });
+    }
+  }
+  
+  // Bundled scrolls have lowest priority - can be overridden by project/global
+  for (const alias of aliases) {
+    const bundledPath = join(PLUGIN_ROOT, alias);
+    if (existsSync(bundledPath)) {
+      dirs.push({ path: bundledPath, source: 'bundled', folderName: alias });
     }
   }
   
@@ -68,6 +81,12 @@ export function walkDir(dir: string, baseDir: string = dir): PromptFile[] {
   return results;
 }
 
+export type WritableScope = 'project' | 'global';
+
+export function toWritableScope(source: PromptSource): WritableScope {
+  return source === 'bundled' ? 'global' : source;
+}
+
 export function getPromptPath(
   name: string, 
   scope: 'project' | 'global', 
@@ -96,7 +115,7 @@ export function getPromptPath(
 export type PromptParser<T extends BasePrompt> = (
   name: string,
   fileContent: string,
-  source: 'project' | 'global',
+  source: PromptSource,
   filePath: string,
   folder?: string
 ) => T;
