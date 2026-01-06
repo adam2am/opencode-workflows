@@ -74,9 +74,10 @@ const DISTINCTION_RULE = `
 <system-rule>
 **DISTINCTION RULE**:
 - **Managing Resources (Workflows/Rules/Crews)**:
-  - **STEP 1**: Fetch the \`//captain-manager\` workflow (via \`get_workflow("captain-manager")\`) to get the CLI instructions.
-  - **STEP 2**: Use the \`captain\` CLI commands described in that workflow.
-  - **CRITICAL**: The \`workflows\` directory is MANAGED. NEVER use \`read\`, \`write\`, \`edit\`, or \`glob\` on workflow files directly. ALWAYS use the Captain CLI.
+  - **STEP 1**: Fetch \`//captain-manager\` (via \`get_workflow("captain-manager")\`) to get management tools.
+  - **STEP 2**: Use \`captain_tool(...)\` for robust management (create/edit/read/delete).
+  - **CLI Option**: \`captain <cmd> <type> <name>\` is available for simple tasks (list/delete).
+  - **CRITICAL**: The \`.opencode/scrolls\` directory is MANAGED. NEVER use \`read\`, \`write\`, \`edit\`, or \`glob\` on workflow files directly. ALWAYS use \`captain_tool\` or CLI.
 - **Skills**: Markdown-defined capabilities (e.g., \`skills_brand_guidelines\`). Call via \`skill\` tool or \`skills_*\` dynamic tools (if present).
 - **Workflows**: Inline templates triggered by \`//name\` (e.g., \`//commit_review\`). Do NOT call them; just mention them.
 

@@ -14,6 +14,11 @@
 
 ### Changed
 - Workflow names now include folder prefix (e.g., `marketing/research` instead of just `research`)
+- **Captain Manager**: Refactored `//captain-manager` to use the new `captain_tool` system
+  - Added robust tools for creating/editing workflows (no more shell quoting issues)
+  - `list`, `read`, `create`, `update`, `delete` tools available
+  - **Tool Management**: Added `tool_create`, `tool_update`, `tool_list` etc. to manage custom tools via AI
+  - Updated documentation to prefer tools over CLI for complex tasks
 
 ## [1.5.0] - 2026-01-05
 
