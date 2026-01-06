@@ -70,6 +70,7 @@ describe('loadWorkflows folder metadata', () => {
 
   beforeAll(() => {
     mkdirSync(join(workflowDir, 'category'), { recursive: true });
+    mkdirSync(join(workflowDir, 'index-cat'), { recursive: true });
     
     writeFileSync(join(workflowDir, 'test-root-wf.md'), `---
 description: "Root workflow"
@@ -79,7 +80,9 @@ description: "Root workflow"
     writeFileSync(join(workflowDir, 'category', 'test-sub-wf.md'), `---
 description: "Categorized workflow"
 ---
-# Categorized`);
+# Sub`);
+
+    writeFileSync(join(workflowDir, 'index-cat', 'index.md'), '# Index Workflow');
   });
 
   afterAll(() => {
@@ -106,5 +109,12 @@ description: "Categorized workflow"
     const workflows = loadWorkflows(testProjectDir);
     const subWf = workflows.get('category/test-sub-wf');
     expect(subWf?.path).toContain('category');
+  });
+
+  test('index.md uses folder name as workflow name', () => {
+    const workflows = loadWorkflows(testProjectDir);
+    const indexWf = workflows.get('index-cat');
+    expect(indexWf).toBeDefined();
+    expect(indexWf?.folder).toBe('index-cat');
   });
 });

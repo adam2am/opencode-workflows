@@ -14,6 +14,7 @@
 
 ### Changed
 - Workflow names now include folder prefix (e.g., `marketing/research` instead of just `research`)
+- `folder/index.md` workflows are now named `folder` (e.g., `//captain-manager` instead of `//captain-manager/index`)
 - **Captain Manager**: Refactored `//captain-manager` to use the new `captain_tool` system
   - Added robust tools for creating/editing workflows (no more shell quoting issues)
   - `list`, `read`, `create`, `update`, `delete` tools available
