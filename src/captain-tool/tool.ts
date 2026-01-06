@@ -15,7 +15,8 @@ export function createCaptainTool(projectDir: string) {
         .string()
         .describe("Tool path: 'category/tool' or 'category/workflow/tool'"),
       params: z
-        .record(z.string(), z.unknown())
+        .object({})
+        .passthrough()
         .optional()
         .describe('Parameters to pass to the tool'),
     }),

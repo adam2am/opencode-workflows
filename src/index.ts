@@ -535,7 +535,7 @@ return `# Workflow: //${workflow.name}\nSource: ${workflow.source}${folderInfo}\
           description: captainTool.description,
           args: {
             tool: tool.schema.string().describe("Tool path: 'category/tool' or 'category/workflow/tool'"),
-            params: tool.schema.record(tool.schema.string(), tool.schema.unknown()).optional().describe('Parameters to pass to the tool'),
+            params: tool.schema.object({}).passthrough().optional().describe('Parameters to pass to the tool'),
           },
           async execute(args) {
             const result = await captainTool.execute({ tool: args.tool, params: args.params ?? {} });
