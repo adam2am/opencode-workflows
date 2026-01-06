@@ -1,5 +1,20 @@
 # Patchlog
 
+## [1.6.0] - 2026-01-06
+
+### Added
+- **Captain Tool System**: Create custom TypeScript tools in workflow folders
+  - Use `defineTool()` factory for type-safe tools with parameter validation
+  - Or simple exports pattern for quick scripts
+  - Tools auto-discovered from `scrolls/**/tools/*.ts`
+- **Category-level tools**: Share tools across workflows in a category (e.g., `marketing/apollo`)
+- **Workflow-specific tools**: Override with dedicated tools (e.g., `marketing/research/special`)
+- `get_workflow` now lists available tools for that workflow
+- Example workflow with tools in `scrolls/examples/`
+
+### Changed
+- Workflow names now include folder prefix (e.g., `marketing/research` instead of just `research`)
+
 ## [1.5.0] - 2026-01-05
 
 ### Added
